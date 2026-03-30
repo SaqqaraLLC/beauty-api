@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" role="img" aria-label="Saqqara LLC Logo">
+  <defs>
+    <linearGradient id="goldGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#F3D082"/>
+      <stop offset="50%" stop-color="#C9A227"/>
+      <stop offset="100%" stop-color="#9C7E1B"/>
+    </linearGradient>
+  </defs>
+  <g>
+    <path d='M400 650 C360 550, 360 520, 400 480 C440 520, 440 550, 400 650 M400 480 C380 460, 360 450, 340 450 C320 450, 300 460, 290 480 C300 500, 320 505, 335 500 C345 520, 360 525, 375 520 M400 480 C420 460, 440 450, 460 450 C480 450, 500 460, 510 480 C500 500, 480 505, 465 500 C455 520, 440 525, 425 520 M330 520 C300 540, 280 570, 280 600 C280 615, 292 625, 305 625 C320 625, 330 615, 335 600 C340 585, 350 570, 365 560 M470 520 C500 540, 520 570, 520 600 C520 615, 508 625, 495 625 C480 625, 470 615, 465 600 C460 585, 450 570, 435 560 M360 430 C350 420, 345 410, 345 400 C345 380, 360 365, 380 365 C395 365, 405 375, 410 390 C415 405, 410 420, 400 430 M440 430 C450 420, 455 410, 455 400 C455 380, 440 365, 420 365 C405 365, 395 375, 390 390 C385 405, 390 420, 400 430 ' fill='none' stroke='url(#goldGrad)' stroke-width='16' stroke-linecap='round' stroke-linejoin='round'/>
+  </g>
+  <g transform="translate(0, 90)">
+    <text x="400" y="740" text-anchor="middle" font-family="Cinzel, serif" font-size="96" fill="#C9A227">SAQQARA</text>
+    <text x="400" y="790" text-anchor="middle" font-family="Cinzel, serif" font-size="40" fill="#C9A227">LLC</text>
+  </g>
+</svg>

@@ -1,0 +1,41 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <InvariantGlobalization>true</InvariantGlobalization>
+
+    <!-- ✅ Keep new files under the Beauty.Api root namespace -->
+    <RootNamespace>Beauty.Api</RootNamespace>
+    <AssemblyName>Beauty.Api</AssemblyName>
+    <UserSecretsId>6bd271f9-dc7b-4a82-9818-76601aa3bb36</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.3" />
+    <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.15.0" />
+    <PackageReference Include="Microsoft.IdentityModel.Tokens" Version="8.15.0" />
+    <PackageReference Include="Microsoft.Kiota.Abstractions" Version="1.22.1" />
+    <PackageReference Include="Microsoft.Kiota.Authentication.Azure" Version="1.22.1" />
+    <PackageReference Include="Microsoft.Kiota.Http.HttpClientLibrary" Version="1.22.1" />
+    <PackageReference Include="Microsoft.Kiota.Serialization.Json" Version="1.22.1" />
+
+    <!-- Pomelo 8.x is for EF Core 8.x -->
+    <PackageReference Include="Pomelo.EntityFrameworkCore.MySql" Version="8.0.2" />
+
+    <!-- (Optional) keep EF.Design the same minor as runtime; 8.0.2 is a safe match with Pomelo 8.0.2 -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.2">
+      <PrivateAssets>All</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+
+    <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="8.0.0" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.5.0" />
+
+    <!-- Graph v5 + Azure.Identity are correct for your GraphEmailSender -->
+    <PackageReference Include="Microsoft.Graph" Version="5.103.0" />
+    <PackageReference Include="Azure.Identity" Version="1.19.0" />
+
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.15.0" />
+  </ItemGroup>
+</Project>
