@@ -132,6 +132,7 @@ C:\Saqqara LLC\saqqara-email-flows\src\Beauty.Api\obj\Debug\net8.0\Beauty.Api.As
 C:\Saqqara LLC\saqqara-email-flows\src\Beauty.Api\obj\Debug\net8.0\Beauty.Api.csproj.CoreCompileInputs.cache
 C:\Saqqara LLC\saqqara-email-flows\src\Beauty.Api\obj\Debug\net8.0\Beauty.Api.MvcApplicationPartsAssemblyInfo.cs
 C:\Saqqara LLC\saqqara-email-flows\src\Beauty.Api\obj\Debug\net8.0\Beauty.Api.MvcApplicationPartsAssemblyInfo.cache
+C:\Saqqara LLC\saqqara-email-flows\src\Beauty.Api\obj\Debug\net8.0\Beauty.Api.sourcelink.json
 C:\Saqqara LLC\saqqara-email-flows\src\Beauty.Api\obj\Debug\net8.0\rjimswa.dswa.cache.json
 C:\Saqqara LLC\saqqara-email-flows\src\Beauty.Api\obj\Debug\net8.0\rjsmrazor.dswa.cache.json
 C:\Saqqara LLC\saqqara-email-flows\src\Beauty.Api\obj\Debug\net8.0\rjsmcshtml.dswa.cache.json

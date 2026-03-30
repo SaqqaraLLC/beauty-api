@@ -1,5 +1,6 @@
 using System;
 using Microsoft.AspNetCore.Identity;
+using Beauty.Api.Models;
 
 namespace Beauty.Api.Models
 {
@@ -75,14 +76,20 @@ namespace Beauty.Api.Models
         public string? Reason { get; set; }
     }
 
- 
-        public class Employee
-        {
-            public int Id { get; set; }
-            public string FirstName { get; set; } = default!;
-            public string LastName { get; set; } = default!;
-            public string? Email { get; set; }
-            public DateTime? HireDate { get; set; }
-            public bool Active { get; set; } = true;
-        }
-    
+
+
+    // src/Beauty.Api/Models/Employee.cs
+
+
+    public class Employee
+    {
+        public int Id { get; set; }
+
+        public string FirstName { get; set; } = default!;
+        public string LastName { get; set; } = default!;
+        public string? Email { get; set; }
+
+        public DateTime? HireDate { get; set; }
+        public bool Active { get; set; } = true;
+    }
+}

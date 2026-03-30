@@ -1,6 +1,5 @@
 ﻿using Beauty.Api.Data;
 using Beauty.Api.Models;
-using Beauty.Api.Models.Beauty.Api.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
