@@ -26,13 +26,24 @@ if (string.IsNullOrWhiteSpace(connectionString))
     throw new InvalidOperationException("Connection string 'BeautyDb' is missing.");
 }
 
-const string DEMO_JWT_ISSUER = "saqqara.api";
-const string DEMO_JWT_AUDIENCE = "saqqara-api";
-const string DEMO_JWT_KEY_BASE64 = "2XUoxnz86+kQCTw0iAktcxijiCvJIDNO8/NuFkk07ws=";
 
-string jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? DEMO_JWT_ISSUER;
-string jwtAudience = builder.Configuration["Jwt:Audience"] ?? DEMO_JWT_AUDIENCE;
-string rawKey = builder.Configuration["Jwt:Key"] ?? DEMO_JWT_KEY_BASE64;
+
+
+ar jwtIssuer = builder.Configuration["Jwt:Issuer"];
+var jwtAudience = builder.Configuration["Jwt:Audience"];
+var jwtKey = builder.Configuration["Jwt:SigningKey"];
+
+if (string.IsNullOrWhiteSpace(jwtIssuer) ||
+    string.IsNullOrWhiteSpace(jwtAudience) ||
+    string.IsNullOrWhiteSpace(jwtKey))
+{
+    throw new InvalidOperationException("JWT configuration is missing.");
+}
+
+var signingKey = new SymmetricSecurityKey(
+    Encoding.UTF8.GetBytes(jwtKey)
+);
+
 
 // ===================== JWT KEY =====================
 builder.Services.AddSwaggerGen(c =>
