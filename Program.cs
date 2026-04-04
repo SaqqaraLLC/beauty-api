@@ -26,10 +26,7 @@ if (string.IsNullOrWhiteSpace(connectionString))
     throw new InvalidOperationException("Connection string 'BeautyDb' is missing.");
 }
 
-
-
-
-ar jwtIssuer = builder.Configuration["Jwt:Issuer"];
+var jwtIssuer = builder.Configuration["Jwt:Issuer"];
 var jwtAudience = builder.Configuration["Jwt:Audience"];
 var jwtKey = builder.Configuration["Jwt:SigningKey"];
 
