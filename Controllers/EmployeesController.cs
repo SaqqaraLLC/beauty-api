@@ -3,6 +3,8 @@ using Beauty.Api.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Identity;
+
 
 [ApiController]
 [Route("api/[controller]")]

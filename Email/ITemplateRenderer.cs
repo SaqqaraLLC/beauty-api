@@ -1,6 +1,8 @@
-﻿namespace Beauty.Api.Email;
+﻿using System.Collections.Generic;
+
+namespace Beauty.Api.Email;
 
 public interface ITemplateRenderer
 {
-    string Render(string templateName, object model);
+    string Render(string templateName, IDictionary<string, string> model);
 }

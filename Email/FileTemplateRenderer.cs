@@ -11,27 +11,33 @@ public sealed class FileTemplateRenderer : ITemplateRenderer
         _env = env;
     }
 
-    public string Render(string templateName, object model)
+    public string Render(string templateName, IDictionary<string, string> model)
     {
-        var templatePath = Path.Combine(
-            _env.ContentRootPath,
-            "Email",
-            "Templates",
-            templateName);
+        var path = Path.Combine(
+            AppContext.BaseDirectory,
+            "EmailTemplates",
+            $"{templateName}.html"
+        );
 
-        if (!File.Exists(templatePath))
-            throw new FileNotFoundException($"Email template not found: {templatePath}");
-
-        var html = File.ReadAllText(templatePath);
-
-        // Very simple token replacement {{PropertyName}}
-        foreach (var prop in model.GetType().GetProperties())
+        if (!File.Exists(path))
         {
-            var token = $"{{{{{prop.Name}}}}}";
-            var value = prop.GetValue(model)?.ToString() ?? string.Empty;
-            html = html.Replace(token, value);
+            throw new FileNotFoundException(
+                $"Email template not found: {path}"
+            );
+        }
+
+        var html = File.ReadAllText(path);
+
+        foreach (var kv in model)
+        {
+            html = html.Replace(
+                $"{{{{{kv.Key}}}}}",
+                kv.Value ?? string.Empty,
+                StringComparison.OrdinalIgnoreCase
+            );
         }
 
         return html;
     }
+
 }

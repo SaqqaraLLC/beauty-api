@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("Beauty.Api")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+8beac5e81d3b92c2190e4a1abeacbaf330b39edc")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+1a3a17693166f2556da4055121956947dd77e216")]
 [assembly: System.Reflection.AssemblyProductAttribute("Beauty.Api")]
 [assembly: System.Reflection.AssemblyTitleAttribute("Beauty.Api")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

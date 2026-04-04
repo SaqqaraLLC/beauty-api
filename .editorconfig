@@ -9,3 +9,5 @@ csharp_style_namespace_declarations = file_scoped:suggestion
 # Warn when namespace doesn’t match the folder structure (IDE0130)
 dotnet_diagnostic.IDE0130.severity = warning
 '@ | Out-File -FilePath .editorconfig -Encoding utf8 -Force
+
+

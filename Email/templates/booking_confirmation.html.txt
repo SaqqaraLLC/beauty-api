@@ -1,0 +1,15 @@
+<!-- src/Beauty.Api/Email/templates/booking_confirmation.html -->
+<html>
+  <body style="font-family:Segoe UI,Arial,sans-serif">
+    <h2>Your booking is confirmed</h2>
+    <p>Hello {{CustomerName}},</p>
+    <p>
+      Service: <b>{{ServiceName}}</b><br/>
+      Artist:  <b>{{ArtistName}}</b><br/>
+      When:    <b>{{Date}} {{StartTime}}–{{EndTime}}</b><br/>
+      Where:   <b>{{LocationName}}</b>
+    </p>
+    <p>Manage your booking: <a href="{{BookingLink}}">{{BookingLink}}</a></p>
+    <p>&copy; {{Year}} Saqqara LLC</p>
+  </body>
+</html>
