@@ -37,9 +37,10 @@ if (string.IsNullOrWhiteSpace(jwtIssuer) ||
     throw new InvalidOperationException("JWT configuration is missing.");
 }
 
-var signingKey = new SymmetricSecurityKey(
+SymmetricSecurityKey signingKey = new SymmetricSecurityKey(
     Encoding.UTF8.GetBytes(jwtKey)
 );
+
 
 
 // ===================== JWT KEY =====================
