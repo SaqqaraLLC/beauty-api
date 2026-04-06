@@ -165,7 +165,7 @@ app.Logger.LogInformation("[DB-CONN] {Conn}", redacted);
 
 await using (var warmup = new MySqlConnection(connectionString))
 {
-    await warmup.OpenAsync();
+ await warmup.OpenAsync();
 }
 app.Logger.LogInformation("[DB-CONN] Warmup open succeeded");
 
