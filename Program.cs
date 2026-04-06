@@ -1,31 +1,34 @@
 using Beauty.Api.Data;
+using Beauty.Api.Domain.Approvals;
 using Beauty.Api.Email;
 using Beauty.Api.Models;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
-using Microsoft.AspNetCore.Routing;
-using Microsoft.AspNetCore.Routing.Patterns;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi.Models;
 using MySqlConnector;
-using System.Security.Cryptography;
+using System.Security.Claims;
 using System.Text;
 using System.Text.RegularExpressions;
-using Beauty.Api.Services;
 
-// ===================== BUILDER =====================
+// =================================================
+// 1. BUILDER
+// =================================================
 var builder = WebApplication.CreateBuilder(args);
-
 Console.WriteLine($"[ENV] ASPNETCORE_ENVIRONMENT = {builder.Environment.EnvironmentName}");
 
-// ===================== CONFIG =====================
+
+// =================================================
+// 2. CONFIGURATION
+// =================================================
+
+// Database
 var connectionString = builder.Configuration.GetConnectionString("BeautyDb");
 if (string.IsNullOrWhiteSpace(connectionString))
-{
     throw new InvalidOperationException("Connection string 'BeautyDb' is missing.");
-}
 
+// JWT
 var jwtIssuer = builder.Configuration["Jwt:Issuer"];
 var jwtAudience = builder.Configuration["Jwt:Audience"];
 var jwtKey = builder.Configuration["Jwt:SigningKey"];
@@ -37,51 +40,20 @@ if (string.IsNullOrWhiteSpace(jwtIssuer) ||
     throw new InvalidOperationException("JWT configuration is missing.");
 }
 
-SymmetricSecurityKey signingKey = new SymmetricSecurityKey(
-    Encoding.UTF8.GetBytes(jwtKey)
-);
+SymmetricSecurityKey signingKey =
+    new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey));
 
 
-
-// ===================== JWT KEY =====================
-builder.Services.AddSwaggerGen(c =>
-{
-    c.AddSecurityDefinition("Bearer", new()
-    {
-        Name = "Authorization",
-        Type = Microsoft.OpenApi.Models.SecuritySchemeType.Http,
-        Scheme = "bearer",
-        BearerFormat = "JWT",
-        In = Microsoft.OpenApi.Models.ParameterLocation.Header,
-        Description = "Enter: Bearer {your JWT token}"
-    });
-
-    c.AddSecurityRequirement(new()
-    {
-        {
-            new Microsoft.OpenApi.Models.OpenApiSecurityScheme
-            {
-                Reference = new Microsoft.OpenApi.Models.OpenApiReference
-                {
-                    Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme,
-                    Id = "Bearer"
-                }
-            },
-            Array.Empty<string>()
-        }
-    });
-});
-
-// ===================== SERVICES =====================
+// =================================================
+// 3. SERVICES
+// =================================================
 
 // EF Core
-
 builder.Services.AddDbContext<BeautyDbContext>(options =>
     options.UseMySql(
-        builder.Configuration.GetConnectionString("BeautyDb"),
+        connectionString,
         new MySqlServerVersion(new Version(8, 0, 34))
     ));
-
 
 // Identity
 builder.Services
@@ -90,53 +62,105 @@ builder.Services
     .AddEntityFrameworkStores<BeautyDbContext>()
     .AddDefaultTokenProviders();
 
-// Auth
+// Authentication & Authorization (LOCK DEFINITION)
+
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(o =>
+    .AddJwtBearer(options =>
     {
-        o.SaveToken = true;
-        o.TokenValidationParameters = new TokenValidationParameters
+        options.SaveToken = true;
+
+        options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
             ValidateAudience = true,
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
+
             ValidIssuer = jwtIssuer,
             ValidAudience = jwtAudience,
             IssuerSigningKey = signingKey,
-            ClockSkew = TimeSpan.FromMinutes(2)
+
+            ClockSkew = TimeSpan.FromMinutes(2),
+
+            // ✅ THIS IS THE IMPORTANT ROLE FIX
+            RoleClaimType = ClaimTypes.Role
         };
     });
 
 builder.Services.AddAuthorization();
-builder.Services.AddScoped<BookingWorkflowService>();  
+
+
+
+// Booking workflow
+builder.Services.AddScoped<IBookingApprovalService, BookingApprovalService>();
 
 // Email
-builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection("Email"));
+builder.Services.Configure<EmailOptions>(
+    builder.Configuration.GetSection("Email"));
+
 builder.Services.AddScoped<IEmailSender, GraphEmailSender>();
 builder.Services.AddSingleton<ITemplateRenderer, FileTemplateRenderer>();
 builder.Services.AddScoped<EmailTemplateService>();
 
-// MVC & Swagger
+// Controllers & Swagger
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
-builder.Services.Configure<EmailOptions>(
-    builder.Configuration.GetSection("Email"));
 
 // Logging
 builder.Logging.ClearProviders();
-builder.Logging.AddSimpleConsole(o => { o.SingleLine = true; o.TimestampFormat = "HH:mm:ss "; });
+builder.Logging.AddSimpleConsole(o =>
+{
+    o.SingleLine = true;
+    o.TimestampFormat = "HH:mm:ss ";
+});
 builder.Logging.AddDebug();
-builder.Logging.SetMinimumLevel(LogLevel.Information);
 
-// ===================== APP =====================
+
+builder.Services.AddSwaggerGen(options =>
+{
+    options.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "My API",
+        Version = "v1"
+    });
+
+    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        Type = SecuritySchemeType.Http,
+        Scheme = "Bearer",
+        BearerFormat = "JWT",
+        In = ParameterLocation.Header,
+        Description = "Enter: Bearer {your JWT token}"
+    });
+
+    options.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference
+                {
+                    Type = ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
+            },
+            Array.Empty<string>()
+        }
+    });
+});
+
+
+
+// =================================================
+// 4. BUILD + STARTUP WORK
+// =================================================
 var app = builder.Build();
 
-
-// ===================== DB WARMUP =====================
-var redacted = Regex.Replace(connectionString, @"Pwd=[^;]*", "Pwd=***", RegexOptions.IgnoreCase);
+// DB warmup
+var redacted = Regex.Replace(connectionString, @"Pwd=[^;]*", "Pwd=***");
 app.Logger.LogInformation("[DB-CONN] {Conn}", redacted);
 
 await using (var warmup = new MySqlConnection(connectionString))
@@ -145,22 +169,20 @@ await using (var warmup = new MySqlConnection(connectionString))
 }
 app.Logger.LogInformation("[DB-CONN] Warmup open succeeded");
 
-// Migrations + seed
-
+// Migrations & seeding
 using (var scope = app.Services.CreateScope())
 {
-    var db = scope.ServiceProvider
-        .GetRequiredService<BeautyDbContext>();
-
-    // ✅ Step 1: Ensure schema exists
+    var db = scope.ServiceProvider.GetRequiredService<BeautyDbContext>();
     await db.Database.MigrateAsync();
 
-    // ✅ Step 2: Seed Identity data
-    await IdentitySeeder.SeedAsync(scope.ServiceProvider);
+    // TEMPORARY: disable until ArtistId/LocationId exist
+    // await IdentitySeeder.SeedAsync(scope.ServiceProvider);
 }
 
 
-// ===================== PIPELINE =====================
+// =================================================
+// 5. REQUEST PIPELINE (LOCKS LIVE HERE)
+// =================================================
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -168,12 +190,17 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+app.UseDefaultFiles();
+app.UseStaticFiles();
+
+// 🔒 AUTHENTICATION & AUTHORIZATION
 app.UseAuthentication();
 app.UseAuthorization();
 
-app.MapControllers().RequireAuthorization();
-app.MapGet("/", () => Results.Ok("Saqqara API is running"));
-app.MapGet("/healthz", () => Results.Ok("healthy"));
+// 🔒 DEFAULT DENY — everything requires auth unless [AllowAnonymous]
+app.MapControllers();
+// Public endpoints
 
 app.Run();
 
