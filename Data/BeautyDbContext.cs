@@ -1,11 +1,13 @@
 using Beauty.Api.Models;
+using Beauty.Api.Models.ApprovalHistory;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 
 namespace Beauty.Api.Data;
 
 public class BeautyDbContext
-    : IdentityDbContext<ApplicationUser, ApplicationRole, string>
+    : IdentityDbContext<ApplicationUser, IdentityRole, string>
 {
     public BeautyDbContext(DbContextOptions<BeautyDbContext> options)
         : base(options)
@@ -13,6 +15,7 @@ public class BeautyDbContext
     }
 
     public DbSet<Booking> Bookings => Set<Booking>();
+    public DbSet<BookingApprovalHistory> BookingApprovalHistories { get; set; } = null!;
     public DbSet<Employee> Employees => Set<Employee>();
     public DbSet<Artist> Artists => Set<Artist>();
     public DbSet<Customer> Customers => Set<Customer>();
@@ -48,7 +51,12 @@ public class BeautyDbContext
 
             entity.Property(x => x.RejectionReason)
                 .HasMaxLength(1000);
+
         });
+       
+        builder.Entity<BookingApprovalHistory>()
+            .HasIndex(x => new { x.BookingId, x.Stage })
+            .IsUnique();
 
         builder.Entity<StreamQuotaOverride>(entity =>
         {
@@ -61,5 +69,8 @@ public class BeautyDbContext
                 .HasMaxLength(1000);
         });
     }
+
+    
+
 }
 

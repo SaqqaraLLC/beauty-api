@@ -15,13 +15,13 @@ public class AccountsController : ControllerBase
 {
     private readonly BeautyDbContext _db;
     private readonly UserManager<ApplicationUser> _users;
-    private readonly RoleManager<ApplicationRole> _roles;
+    private readonly RoleManager<IdentityRole> _roles;
     private readonly EmailTemplateService _email;
 
     public AccountsController(
         BeautyDbContext db,
         UserManager<ApplicationUser> userMgr,
-        RoleManager<ApplicationRole> roleMgr,
+        RoleManager<IdentityRole> roleMgr,
         EmailTemplateService email)
     {
         _db = db;

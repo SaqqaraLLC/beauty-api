@@ -1,12 +1,14 @@
 ﻿
 using System;
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace Beauty.Api.Models;
 
 public class Booking
 {
     public long BookingId { get; set; }
+    public BookingStatus Status { get; set; }
 
     public long CustomerId { get; set; }
     public long ArtistId { get; set; }
@@ -27,42 +29,14 @@ public class Booking
     public string? LocationApprovedByUserId { get; set; }
 
     public string? RejectionReason { get; set; }
+    public DateTime? DirectorApprovedAt { get; set; }
+    public string? DirectorApprovedByUserId { get; set; }
+    public ApplicationUser? DirectorApprovedByUser { get; set; }
 
-    public BookingStatus Status { get; set; } = BookingStatus.PendingApprovals;
 
+    // ✅ computed, not stored
+    [NotMapped]
     public bool CanCustomerCompleteApplication =>
-        Status == BookingStatus.Approved;
+            Status == BookingStatus.FullyApproved;
 
-    public void RecalculateStatus()
-    {
-        if (ArtistApproval == ApprovalDecision.Rejected ||
-            LocationApproval == ApprovalDecision.Rejected)
-        {
-            Status = BookingStatus.Rejected;
-            return;
-        }
-
-        if (ArtistApproval == ApprovalDecision.Approved &&
-            LocationApproval == ApprovalDecision.Approved)
-        {
-            Status = BookingStatus.Approved;
-            return;
-        }
-
-        if (ArtistApproval == ApprovalDecision.Approved &&
-            LocationApproval == ApprovalDecision.Pending)
-        {
-            Status = BookingStatus.ArtistApproved;
-            return;
-        }
-
-        if (ArtistApproval == ApprovalDecision.Pending &&
-            LocationApproval == ApprovalDecision.Approved)
-        {
-            Status = BookingStatus.LocationApproved;
-            return;
-        }
-
-        Status = BookingStatus.PendingApprovals;
-    }
 }

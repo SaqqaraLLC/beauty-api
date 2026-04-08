@@ -1,7 +1,11 @@
 using Beauty.Api.Data;
+using Beauty.Api.Domain.Approvals;
 using Beauty.Api.Email;
 using Beauty.Api.Models;
+using Beauty.Api.Models.ApprovalHistory;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -14,21 +18,23 @@ public class BookingsController : ControllerBase
     private readonly BeautyDbContext _db;
     private readonly ITemplateRenderer _renderer;
     private readonly IEmailSender _sender;
+    private readonly IBookingApprovalService _approvalService;
 
     public BookingsController(
         BeautyDbContext db,
         ITemplateRenderer renderer,
-        IEmailSender sender)
+        IEmailSender sender,
+        IBookingApprovalService approvalService)
     {
         _db = db;
         _renderer = renderer;
         _sender = sender;
+        _approvalService = approvalService;
     }
 
     // ============================
     // REQUEST MODELS
     // ============================
-
     public record CreateReq(
         long CustomerId, string CustomerEmail, string CustomerName,
         long ArtistId, string ArtistName,
@@ -39,7 +45,7 @@ public class BookingsController : ControllerBase
     public record RejectReq(string Reason);
 
     // ============================
-    // CREATE BOOKING (PUBLIC)
+    // CREATE BOOKING
     // ============================
     [HttpPost("create")]
     [AllowAnonymous]
@@ -56,7 +62,7 @@ public class BookingsController : ControllerBase
             LocationId = req.LocationId,
             StartsAt = req.StartsAtUtc,
             EndsAt = req.EndsAtUtc,
-            Status = BookingStatus.PendingApprovals,
+            Status = BookingStatus.Requested,
             ArtistApproval = ApprovalDecision.Pending,
             LocationApproval = ApprovalDecision.Pending
         };
@@ -64,74 +70,47 @@ public class BookingsController : ControllerBase
         _db.Bookings.Add(booking);
         await _db.SaveChangesAsync();
 
-        // Render confirmation email
-        var model = new Dictionary<string, string>
+        var html = _renderer.Render("booking_confirmation", new Dictionary<string, string>
         {
             ["CustomerName"] = req.CustomerName,
             ["ArtistName"] = req.ArtistName,
             ["ServiceName"] = req.ServiceName,
+            ["LocationName"] = req.LocationName,
             ["Date"] = req.StartsAtUtc.ToLocalTime().ToString("MMM d, yyyy"),
             ["StartTime"] = req.StartsAtUtc.ToLocalTime().ToString("h:mm tt"),
             ["EndTime"] = req.EndsAtUtc.ToLocalTime().ToString("h:mm tt"),
-            ["LocationName"] = req.LocationName,
             ["BookingLink"] = $"https://app.saqqarallc.com/bookings/{booking.BookingId}",
             ["Year"] = DateTime.UtcNow.Year.ToString()
-        };
-
-        var html = _renderer.Render("booking_confirmation", model);
+        });
 
         await _sender.SendHtmlAsync(
             req.CustomerEmail,
             "Your Saqqara booking request was received",
-            html
-        );
+            html);
 
-        return Created($"/api/bookings/{booking.BookingId}", booking);
+        return Created($"/api/bookings/{booking.BookingId}", new
+        {
+            booking.BookingId,
+            booking.Status
+        });
     }
 
     // ============================
     // ARTIST APPROVAL
     // ============================
     [HttpPost("{id:long}/approve/artist")]
-    [Authorize(Roles = "Artist")]
+    [Authorize(Roles = "Artist,Admin")]
     public async Task<IActionResult> ApproveArtist(long id)
     {
-        var booking = await _db.Bookings.FindAsync(id);
-        if (booking == null)
-            return NotFound();
-
-        if (booking.ArtistApproval != ApprovalDecision.Pending)
-            return BadRequest("Artist has already acted on this booking.");
-
-        booking.ArtistApproval = ApprovalDecision.Approved;
-        booking.ArtistApprovedAt = DateTime.UtcNow;
-        booking.ArtistApprovedByUserId = User.Identity?.Name;
-
-        booking.RecalculateStatus();
-        await _db.SaveChangesAsync();
-
-        return Ok(new
-        {
-            booking.BookingId,
-            booking.Status,
-            booking.ArtistApproval,
-            booking.CanCustomerCompleteApplication
-        });
+        await _approvalService.ApproveAsync(id, ApprovalStage.Artist, User);
+        return Ok();
     }
 
     [HttpPost("{id:long}/reject/artist")]
-    [Authorize(Roles = "Artist")]
+    [Authorize(Roles = "Artist,Admin")]
     public async Task<IActionResult> RejectArtist(long id, [FromBody] RejectReq req)
     {
-        var booking = await _db.Bookings.FindAsync(id);
-        if (booking == null)
-            return NotFound();
-
-        booking.ArtistApproval = ApprovalDecision.Rejected;
-        booking.RejectionReason = req.Reason;
-        booking.RecalculateStatus();
-
-        await _db.SaveChangesAsync();
+        await _approvalService.RejectAsync(id, ApprovalStage.Artist, req.Reason, User);
         return Ok();
     }
 
@@ -139,79 +118,83 @@ public class BookingsController : ControllerBase
     // LOCATION APPROVAL
     // ============================
     [HttpPost("{id:long}/approve/location")]
-    [Authorize(Roles = "Location")]
+    [Authorize(Roles = "Location,Admin")]
     public async Task<IActionResult> ApproveLocation(long id)
     {
-        var booking = await _db.Bookings.FindAsync(id);
-        if (booking == null)
-            return NotFound();
-
-        if (booking.LocationApproval != ApprovalDecision.Pending)
-            return BadRequest("Location has already acted on this booking.");
-
-        booking.LocationApproval = ApprovalDecision.Approved;
-        booking.LocationApprovedAt = DateTime.UtcNow;
-        booking.LocationApprovedByUserId = User.Identity?.Name;
-
-        booking.RecalculateStatus();
-        await _db.SaveChangesAsync();
-
-        return Ok(new
-        {
-            booking.BookingId,
-            booking.Status,
-            booking.LocationApproval,
-            booking.CanCustomerCompleteApplication
-        });
+        await _approvalService.ApproveAsync(id, ApprovalStage.Location, User);
+        return Ok();
     }
 
     [HttpPost("{id:long}/reject/location")]
-    [Authorize(Roles = "Location")]
+    [Authorize(Roles = "Location,Admin")]
     public async Task<IActionResult> RejectLocation(long id, [FromBody] RejectReq req)
     {
-        var booking = await _db.Bookings.FindAsync(id);
-        if (booking == null)
-            return NotFound();
+        await _approvalService.RejectAsync(id, ApprovalStage.Location, req.Reason, User);
+        return Ok();
+    }
 
-        booking.LocationApproval = ApprovalDecision.Rejected;
-        booking.RejectionReason = req.Reason;
-        booking.RecalculateStatus();
+    // ========================
+    // ADMIN / PENDING USERS
+    // ========================
 
-        await _db.SaveChangesAsync();
+    [Authorize(
+        AuthenticationSchemes = "Bearer,Identity.Application",
+        Roles = "Admin"
+    )]
+    [HttpGet("admin/pending-users")]
+    public IActionResult GetPendingUsers()
+    {
+        var users = _approvalService.GetPendingUsers();
+        return Ok(users);
+    }
+
+
+    // ============================
+    // DIRECTOR APPROVAL
+    // ============================
+    [HttpPost("{id:long}/approve/director")]
+    [Authorize(Roles = "Director")]
+    public async Task<IActionResult> ApproveByDirector(long id)
+    {
+        await _approvalService.ApproveAsync(id, ApprovalStage.Director, User);
         return Ok();
     }
 
     // ============================
-    // TEMPLATE PREVIEW (DEV ONLY)
+    // APPROVAL HISTORY
     // ============================
-    [HttpGet("templates/{name}")]
-    [Authorize(Roles = "Admin")]
-    public IActionResult PreviewTemplate(string name)
+    [HttpGet("{id:long}/approval-history")]
+    [Authorize]
+    public async Task<IActionResult> GetApprovalHistory(long id)
     {
-        var html = _renderer.Render(name, new Dictionary<string, string>
-        {
-            ["CustomerName"] = "Preview User",
-            ["ArtistName"] = "Preview Artist",
-            ["ServiceName"] = "Preview Service",
-            ["Date"] = DateTime.Today.ToShortDateString(),
-            ["StartTime"] = "10:00 AM",
-            ["EndTime"] = "11:00 AM",
-            ["LocationName"] = "Preview Location",
-            ["BookingLink"] = "#",
-            ["Year"] = DateTime.UtcNow.Year.ToString()
-        });
+        var history = await _db.BookingApprovalHistories
+            .Where(h => h.BookingId == id)
+            .OrderBy(h => h.ActionAt)
+            .Select(h => new
+            {
+                h.Stage,
+                h.Action,
+                h.ActionAt,
+                h.PerformedByEmail,
+                h.PerformedByRole,
+                h.Comment
+            })
+            .ToListAsync();
 
-        return Content(html, "text/html");
+        return Ok(history);
     }
 
     // ============================
-    // STATUS CHECK (PUBLIC)
+    // STATUS CHECK
     // ============================
     [HttpGet("{id:long}/status")]
     [AllowAnonymous]
     public async Task<IActionResult> GetStatus(long id)
     {
-        var booking = await _db.Bookings.FirstOrDefaultAsync(x => x.BookingId == id);
+        var booking = await _db.Bookings
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x => x.BookingId == id);
+
         if (booking == null)
             return NotFound();
 
@@ -221,9 +204,9 @@ public class BookingsController : ControllerBase
             booking.Status,
             booking.ArtistApproval,
             booking.LocationApproval,
-            booking.CanCustomerCompleteApplication,
             booking.ArtistApprovedAt,
             booking.LocationApprovedAt,
+            booking.DirectorApprovedAt,
             booking.RejectionReason
         });
     }

@@ -1,113 +1,184 @@
-
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
-using System.Text;
 using Beauty.Api.Email;
 using Beauty.Api.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity.Data;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Text;
+using Beauty.Api.Contracts.Auth;
 
 namespace Beauty.Api.Controllers;
 
 [ApiController]
-[Route("api/auth")] 
-public class AuthController : ControllerBase
+[Route("auth")]
+public sealed class AuthController : ControllerBase
 {
-    private readonly UserManager<ApplicationUser> _userMgr;
-    private readonly IConfiguration _cfg;
+    private readonly UserManager<ApplicationUser> _userManager;
+    private readonly SignInManager<ApplicationUser> _signInManager;
+    private readonly IConfiguration _config;
+    
+    public AuthController(
+        UserManager<ApplicationUser> userManager,
+        SignInManager<ApplicationUser> signInManager,
+        IConfiguration config)
+    {
+        _userManager = userManager;
+        _signInManager = signInManager;
+        _config = config;
+    }
 
-    public AuthController(UserManager<ApplicationUser> userMgr, IConfiguration cfg)
-    { _userMgr = userMgr; _cfg = cfg; }
+    // ✅ LOGIN + LOCKOUT
+    [HttpPost("login")]
+    [AllowAnonymous]
+    public async Task<IActionResult> Login([FromBody] LoginDto req)
+    {
+        var result = await _signInManager.PasswordSignInAsync(
+            req.Email,
+            req.Password,
+            isPersistent: true,
+            lockoutOnFailure: true
+        );
 
-    public record TokenRequest(string Email, string Password);
+        if (result.IsLockedOut)
+            return Unauthorized(new { code = "LOCKED_OUT" });
 
+        if (result.RequiresTwoFactor)
+            return Ok(new { requiresMfa = true });
+
+        if (!result.Succeeded)
+            return Unauthorized(new { code = "INVALID_CREDENTIALS" });
+
+        return Ok();
+    }
+
+
+    // ✅ MFA VERIFY
+    [HttpPost("mfa/verify")]
+    public async Task<IActionResult> VerifyMfa([FromBody] MfaVerifyRequest req)
+    {
+        var user = await _signInManager.GetTwoFactorAuthenticationUserAsync();
+        if (user == null) return Unauthorized();
+
+        var valid = await _userManager.VerifyTwoFactorTokenAsync(
+            user,
+            TokenOptions.DefaultAuthenticatorProvider,
+            req.Code
+        );
+
+        if (!valid) return Unauthorized("Invalid code");
+
+        await _signInManager.SignInAsync(user, true);
+        return Ok();
+    }
+
+    // ✅ MFA SETUP
+    [Authorize]
+    [HttpPost("mfa/setup")]
+    public async Task<IActionResult> SetupMfa()
+    {
+        var user = await _userManager.GetUserAsync(User);
+
+        
+var key = await _userManager.GetAuthenticatorKeyAsync(user);
+
+if (string.IsNullOrEmpty(key))
+{
+    await _userManager.ResetAuthenticatorKeyAsync(user);
+    key = await _userManager.GetAuthenticatorKeyAsync(user);
+}
+
+
+        return Ok(new
+        {
+            sharedKey = key,
+            qrCodeUri = GenerateQrCodeUri(user.Email!, key)
+        });
+    }
+
+    // ✅ JWT TOKEN (for Swagger / API clients)
     [HttpPost("token")]
     [AllowAnonymous]
     public async Task<IActionResult> Token([FromBody] TokenRequest req)
     {
-        var user = await _userMgr.FindByEmailAsync(req.Email);
-        if (user == null)
+        var user = await _userManager.FindByEmailAsync(req.Email);
+        if (user == null || !await _userManager.CheckPasswordAsync(user, req.Password))
             return Unauthorized();
 
-        var valid = await _userMgr.CheckPasswordAsync(user, req.Password);
-        if (!valid)
-            return Unauthorized();
-
-        var roles = await _userMgr.GetRolesAsync(user);
-
-        var key = _cfg["Jwt:Key"];
-        var issuer = _cfg["Jwt:Issuer"];
-        var audience = _cfg["Jwt:Audience"];
-
-        if (string.IsNullOrWhiteSpace(key) ||
-            string.IsNullOrWhiteSpace(issuer) ||
-            string.IsNullOrWhiteSpace(audience))
-        {
-            return StatusCode(500, new { error = "JWT configuration missing" });
-        }
+        var roles = await _userManager.GetRolesAsync(user);
 
         var claims = new List<Claim>
-{
-    new Claim(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
-    new Claim(JwtRegisteredClaimNames.Email, user.Email ?? string.Empty),
-    new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
-    new Claim(ClaimTypes.Name, user.Email ?? string.Empty)
-};
+        {
+            new Claim(JwtRegisteredClaimNames.Sub, user.Id),
+            new Claim(ClaimTypes.Name, user.Email!)
+        };
+        claims.AddRange(roles.Select(r => new Claim(ClaimTypes.Role, r)));
 
-        claims.AddRange(
-            roles.Select(r => new Claim(ClaimTypes.Role, r))
+
+        var signingKey = new SymmetricSecurityKey(
+            Encoding.UTF8.GetBytes(_config["Jwt:SigningKey"]!)
         );
 
-        var creds = new SigningCredentials(
-     new SymmetricSecurityKey(Encoding.UTF8.GetBytes(key)),
-     SecurityAlgorithms.HmacSha256
- );
+        var credentials = new SigningCredentials(
+            signingKey,
+            SecurityAlgorithms.HmacSha256
+        );
 
-        var token = new System.IdentityModel.Tokens.Jwt.JwtSecurityToken(
-            issuer: issuer,
-            audience: audience,
+        var token = new JwtSecurityToken(
+            issuer: _config["Jwt:Issuer"],
+            audience: _config["Jwt:Audience"],
             claims: claims,
+            notBefore: DateTime.UtcNow,
             expires: DateTime.UtcNow.AddHours(8),
-            signingCredentials: creds
+            signingCredentials: credentials
         );
 
-        var jwt =
-            new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler()
-                .WriteToken(token);
+        var jwt = new JwtSecurityTokenHandler().WriteToken(token);
 
         return Ok(new
         {
-            access_token = jwt,
-            roles
-        });
+            access_token = jwt
+        }
+
+
+        ); 
     }
 
-    public record ForgotDto(string Email);
-
+        // ✅ PASSWORD RESET
     [HttpPost("forgot-password")]
     [AllowAnonymous]
-    public async Task<IActionResult> Forgot([FromServices] EmailTemplateService emailSvc, [FromBody] ForgotDto dto)
-    {
-        var user = await _userMgr.FindByEmailAsync(dto.Email);
-        if (user == null) return Ok();
-        var token = await _userMgr.GeneratePasswordResetTokenAsync(user);
-        var resetUrl = ($"{_cfg["Brand:PrimaryResetUrl"] ?? "https://app.saqqarallc.com/reset"}?email={Uri.EscapeDataString(user.Email!)}&token={Uri.EscapeDataString(token)}");
-        await emailSvc.SendResetAsync(user.Email!, user.Email!, resetUrl);
-        return Ok();
-    }
 
-    public record ResetDto(string Email, string Token, string NewPassword);
+    public async Task<IActionResult> ForgotPassword(
+          [FromServices] EmailTemplateService emailSvc,
+          [FromBody] ForgotDto dto)
+    {
+            var user = await _userManager.FindByEmailAsync(dto.Email);
+            if (user == null) return Ok();
+
+            var token = await _userManager.GeneratePasswordResetTokenAsync(user);
+            var resetUrl = $"{_config["Brand:PrimaryResetUrl"]}?email={Uri.EscapeDataString(user.Email!)}&token={Uri.EscapeDataString(token)}";
+
+            await emailSvc.SendResetAsync(user.Email!, user.Email!, resetUrl);
+            return Ok();
+    }
 
     [HttpPost("reset-password")]
     [AllowAnonymous]
-    public async Task<IActionResult> Reset([FromBody] ResetDto dto)
+    public async Task<IActionResult> ResetPassword([FromBody] ResetDto dto)
     {
-        var user = await _userMgr.FindByEmailAsync(dto.Email);
-        if (user == null) return BadRequest();
-        var res = await _userMgr.ResetPasswordAsync(user, dto.Token, dto.NewPassword);
-        if (!res.Succeeded) return BadRequest(res.Errors);
-        return Ok();
+            var user = await _userManager.FindByEmailAsync(dto.Email);
+            if (user == null) return BadRequest();
+
+            var result = await _userManager.ResetPasswordAsync(user, dto.Token, dto.NewPassword);
+            if (!result.Succeeded) return BadRequest(result.Errors);
+
+            return Ok();
+        
     }
+
+    // ✅ Helpers
+    private static string GenerateQrCodeUri(string email, string key)
+        => $"otpauth://totp/Saqqara:{email}?secret={key}&issuer=Saqqara";
 }
