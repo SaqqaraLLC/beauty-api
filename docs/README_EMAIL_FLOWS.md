@@ -1,0 +1,1 @@
+This build includes Graph email flows (welcome, reset, booking+ICS, admin alerts). Configure Email in appsettings.json and run.

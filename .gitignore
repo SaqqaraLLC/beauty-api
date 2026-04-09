@@ -1,0 +1,11 @@
+## .NET
+bin/
+obj/
+*.user
+.vs/
+
+## Secrets (managed via Azure App Settings)
+src/Beauty.Api/appsettings.Development.json
+
+## Logs
+*.log
