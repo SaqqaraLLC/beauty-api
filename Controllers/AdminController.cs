@@ -1,48 +1,78 @@
-﻿using Microsoft.AspNetCore.Authorization;
+﻿using Beauty.Api.Data;
+using Beauty.Api.Models;
+using Beauty.Api.Models.ApprovalHistory;
+using Beauty.Api.Services;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 
 namespace Beauty.Api.Controllers
 {
+
     [Authorize(Roles = "Admin")]
     [ApiController]
     [Route("admin")]
     public class AdminController : ControllerBase
     {
+        private readonly UserApprovalService _approvalService;
+        private readonly UserManager<ApplicationUser> _userManager;
+        private readonly BeautyDbContext _db;
+        public AdminController(UserManager<ApplicationUser> userManager)
+        {
+            _userManager = userManager;
+        }
+
         [HttpGet("pending-users")]
         public IActionResult GetPendingUsers()
         {
-            // TEMP: return mock data so frontend works
-            var users = new[]
-            {
-                new {
-                    Id = "1",
-                    Email = "artist@test.com",
-                    Role = "Artist",
-                    Status = "Pending"
-                },
-                new {
-                    Id = "2",
-                    Email = "client@test.com",
-                    Role = "Client",
-                    Status = "Pending"
-                }
-            };
+            var users = _userManager.Users
+                .Where(u => u.Status == "Pending")
+                .Select(u => new
+                {
+                    u.Id,
+                    u.Email,
+                    u.Status,
+                    Role = "" // optional: fill later
+                })
+                .ToList();
 
             return Ok(users);
         }
 
-        [HttpPost("approve/{id}")]
-        public IActionResult Approve(string id)
+        public AdminController(
+                UserManager<ApplicationUser> userManager,
+                UserApprovalService approvalService)
         {
-            // TEMP: approval logic will go here later
-            return Ok(new { Approved = id });
+            _userManager = userManager;
+            _approvalService = approvalService;
+        }
+
+        [HttpPost("approve/{id}")]
+        public async Task<IActionResult> Approve(string id)
+        {
+            var adminId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+            var user = await _userManager.FindByIdAsync(id);
+            if (user == null)
+                return NotFound();
+
+            await _approvalService.ApproveUserAsync(user, adminId);
+
+            return Ok();
         }
 
         [HttpPost("reject/{id}")]
-        public IActionResult Reject(string id)
+        public async Task<IActionResult> Reject(string id)
         {
-            // TEMP: rejection logic will go here later
-            return Ok(new { Rejected = id });
+            var user = await _userManager.FindByIdAsync(id);
+            if (user == null) return NotFound();
+
+            user.Status = "Rejected";
+            await _userManager.UpdateAsync(user);
+
+            return Ok();
         }
+
     }
 }

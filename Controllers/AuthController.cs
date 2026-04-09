@@ -178,6 +178,21 @@ if (string.IsNullOrEmpty(key))
         
     }
 
+    [Authorize]
+    [HttpGet("me")]
+    public IActionResult Me()
+    {
+        return Ok(new
+        {
+            UserId = User.FindFirstValue(ClaimTypes.NameIdentifier),
+            Email = User.Identity?.Name,
+            Roles = User.Claims
+                .Where(c => c.Type == ClaimTypes.Role)
+                .Select(c => c.Value)
+                .ToArray()
+        });
+    }
+
     // ✅ Helpers
     private static string GenerateQrCodeUri(string email, string key)
         => $"otpauth://totp/Saqqara:{email}?secret={key}&issuer=Saqqara";

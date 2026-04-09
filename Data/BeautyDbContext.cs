@@ -13,7 +13,7 @@ public class BeautyDbContext
         : base(options)
     {
     }
-
+    public DbSet<ApprovalHistory> ApprovalHistories => Set<ApprovalHistory>();
     public DbSet<Booking> Bookings => Set<Booking>();
     public DbSet<BookingApprovalHistory> BookingApprovalHistories { get; set; } = null!;
     public DbSet<Employee> Employees => Set<Employee>();

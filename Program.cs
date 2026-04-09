@@ -2,6 +2,7 @@ using Beauty.Api.Data;
 using Beauty.Api.Domain.Approvals;
 using Beauty.Api.Email;
 using Beauty.Api.Models;
+using Beauty.Api.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -144,6 +145,7 @@ builder.Services.AddCors(options =>
 
 // Booking workflow
 builder.Services.AddScoped<IBookingApprovalService, BookingApprovalService>();
+builder.Services.AddScoped<UserApprovalService>();
 
 //Add Admin Login
 builder.Services.Configure<SeedSettings>(
@@ -233,6 +235,7 @@ builder.Services.ConfigureApplicationCookie(options =>
 // =================================================
 var app = builder.Build();
 
+
 using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;
@@ -241,43 +244,47 @@ using (var scope = app.Services.CreateScope())
     var roleManager = services.GetRequiredService<RoleManager<IdentityRole>>();
     var seed = services.GetRequiredService<IOptions<SeedSettings>>().Value;
 
-    // Ensure roles exist
+    // ✅ Ensure roles exist (all environments)
     if (!await roleManager.RoleExistsAsync("Admin"))
         await roleManager.CreateAsync(new IdentityRole("Admin"));
 
     if (!await roleManager.RoleExistsAsync("Staff"))
         await roleManager.CreateAsync(new IdentityRole("Staff"));
 
-    // Seed Admin
-    var admin = await userManager.FindByEmailAsync(seed.AdminEmail);
-    if (admin == null)
+    // ✅ Seed users ONLY in development
+    if (app.Environment.IsDevelopment())
     {
-        admin = new ApplicationUser
+        // Seed Admin
+        var admin = await userManager.FindByEmailAsync(seed.AdminEmail);
+        if (admin == null)
         {
-            UserName = seed.AdminEmail,
-            Email = seed.AdminEmail,
-            EmailConfirmed = true,
-            Status = "Approved"
-        };
+            admin = new ApplicationUser
+            {
+                UserName = seed.AdminEmail,
+                Email = seed.AdminEmail,
+                EmailConfirmed = true,
+                Status = "Approved"
+            };
 
-        await userManager.CreateAsync(admin, seed.AdminPassword);
-        await userManager.AddToRoleAsync(admin, "Admin");
-    }
+            await userManager.CreateAsync(admin, seed.AdminPassword);
+            await userManager.AddToRoleAsync(admin, "Admin");
+        }
 
-    // Seed Staff
-    var staff = await userManager.FindByEmailAsync(seed.StaffEmail);
-    if (staff == null)
-    {
-        staff = new ApplicationUser
+        // Seed Staff
+        var staff = await userManager.FindByEmailAsync(seed.StaffEmail);
+        if (staff == null)
         {
-            UserName = seed.StaffEmail,
-            Email = seed.StaffEmail,
-            EmailConfirmed = true,
-            Status = "Approved"
-        };
+            staff = new ApplicationUser
+            {
+                UserName = seed.StaffEmail,
+                Email = seed.StaffEmail,
+                EmailConfirmed = true,
+                Status = "Approved"
+            };
 
-        await userManager.CreateAsync(staff, seed.StaffPassword);
-        await userManager.AddToRoleAsync(staff, "Staff");
+            await userManager.CreateAsync(staff, seed.StaffPassword);
+            await userManager.AddToRoleAsync(staff, "Staff");
+        }
     }
 }
 
