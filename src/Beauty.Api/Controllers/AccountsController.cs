@@ -95,7 +95,7 @@ public class AccountsController : ControllerBase
         // 5) Optional welcome email (idempotent; swallow failures if you want a pure 201)
         try
         {
-            await _email.SendWelcomeAsync(user.Email!, req.FullName, loginUrl: "https://app.saqqarallc.com/login");
+            await _email.SendWelcomeAsync(user.Email!, req.FullName, loginUrl: "https://saqqarallc.net/auth/login");
         }
         catch
         {

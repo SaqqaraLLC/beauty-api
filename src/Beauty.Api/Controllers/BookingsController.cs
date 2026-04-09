@@ -79,7 +79,7 @@ public class BookingsController : ControllerBase
             ["Date"] = req.StartsAtUtc.ToLocalTime().ToString("MMM d, yyyy"),
             ["StartTime"] = req.StartsAtUtc.ToLocalTime().ToString("h:mm tt"),
             ["EndTime"] = req.EndsAtUtc.ToLocalTime().ToString("h:mm tt"),
-            ["BookingLink"] = $"https://app.saqqarallc.com/bookings/{booking.BookingId}",
+            ["BookingLink"] = $"https://saqqarallc.net/dashboard/artist/bookings",
             ["Year"] = DateTime.UtcNow.Year.ToString()
         });
 
