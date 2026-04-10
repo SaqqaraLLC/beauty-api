@@ -269,7 +269,14 @@ builder.Services.ConfigureApplicationCookie(options =>
 // =================================================
 var app = builder.Build();
 
+// ── 1. Migrate first — tables must exist before seeding ──────────────────
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<BeautyDbContext>();
+    await db.Database.MigrateAsync();
+}
 
+// ── 2. Seed roles (all environments) and dev users ───────────────────────
 using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;
@@ -278,7 +285,6 @@ using (var scope = app.Services.CreateScope())
     var roleManager = services.GetRequiredService<RoleManager<IdentityRole>>();
     var seed = services.GetRequiredService<IOptions<SeedSettings>>().Value;
 
-    // ✅ Ensure roles exist (all environments)
     var allRoles = new[] { "Admin", "Staff", "Artist", "Agent", "Company", "Client" };
     foreach (var role in allRoles)
     {
@@ -286,10 +292,8 @@ using (var scope = app.Services.CreateScope())
             await roleManager.CreateAsync(new IdentityRole(role));
     }
 
-    // ✅ Seed users ONLY in development
     if (app.Environment.IsDevelopment())
     {
-        // Seed Admin
         var admin = await userManager.FindByEmailAsync(seed.AdminEmail);
         if (admin == null)
         {
@@ -300,12 +304,10 @@ using (var scope = app.Services.CreateScope())
                 EmailConfirmed = true,
                 Status = "Approved"
             };
-
             await userManager.CreateAsync(admin, seed.AdminPassword);
             await userManager.AddToRoleAsync(admin, "Admin");
         }
 
-        // Seed Staff
         var staff = await userManager.FindByEmailAsync(seed.StaffEmail);
         if (staff == null)
         {
@@ -316,34 +318,10 @@ using (var scope = app.Services.CreateScope())
                 EmailConfirmed = true,
                 Status = "Approved"
             };
-
             await userManager.CreateAsync(staff, seed.StaffPassword);
             await userManager.AddToRoleAsync(staff, "Staff");
         }
     }
-}
-
-Console.WriteLine("EF CONNECTION = " +
-    builder.Configuration.GetConnectionString("DefaultConnection"));
-
-// DB warmup
-var redacted = Regex.Replace(connectionString, @"Pwd=[^;]*", "Pwd=***");
-app.Logger.LogInformation("[DB-CONN] {Conn}", redacted);
-
-await using (var warmup = new MySqlConnection(connectionString))
-{
-await warmup.OpenAsync();
-}
-app.Logger.LogInformation("[DB-CONN] Warmup open succeeded");
-
-// Migrations & seeding
-using (var scope = app.Services.CreateScope())
-{
-    var db = scope.ServiceProvider.GetRequiredService<BeautyDbContext>();
-    await db.Database.MigrateAsync();
-
-    // TEMPORARY: disable until ArtistId/LocationId exist
-    // await IdentitySeeder.SeedAsync(scope.ServiceProvider);
 }
 
 
