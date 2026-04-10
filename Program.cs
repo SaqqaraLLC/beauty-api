@@ -269,18 +269,25 @@ builder.Services.ConfigureApplicationCookie(options =>
 // =================================================
 var app = builder.Build();
 
-// ── 1. Migrate first — tables must exist before seeding ──────────────────
-using (var scope = app.Services.CreateScope())
+// ── 1. Migrate first ─────────────────────────────────────────────────────
+try
 {
+    using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<BeautyDbContext>();
     await db.Database.MigrateAsync();
+    Console.WriteLine("[STARTUP] Migration succeeded.");
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"[STARTUP] Migration failed: {ex.Message}");
+    // Continue — don't crash the process; health endpoint will still respond
 }
 
-// ── 2. Seed roles (all environments) and dev users ───────────────────────
-using (var scope = app.Services.CreateScope())
+// ── 2. Seed roles ────────────────────────────────────────────────────────
+try
 {
+    using var scope = app.Services.CreateScope();
     var services = scope.ServiceProvider;
-
     var userManager = services.GetRequiredService<UserManager<ApplicationUser>>();
     var roleManager = services.GetRequiredService<RoleManager<IdentityRole>>();
     var seed = services.GetRequiredService<IOptions<SeedSettings>>().Value;
@@ -322,6 +329,11 @@ using (var scope = app.Services.CreateScope())
             await userManager.AddToRoleAsync(staff, "Staff");
         }
     }
+    Console.WriteLine("[STARTUP] Role seeding succeeded.");
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"[STARTUP] Role seeding failed: {ex.Message}");
 }
 
 
