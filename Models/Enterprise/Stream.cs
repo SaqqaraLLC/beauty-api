@@ -30,4 +30,11 @@ public class Stream
     public string TagsJson { get; set; } = "[]";
 
     public bool IsActive { get; set; } = true;
+
+    // ACS room integration
+    [MaxLength(200)]
+    public string? AcsRoomId { get; set; }
+
+    [MaxLength(200)]
+    public string? AcsHostUserId { get; set; }
 }

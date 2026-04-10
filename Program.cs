@@ -179,6 +179,7 @@ builder.Services.AddRateLimiter(options =>
 // Booking workflow
 builder.Services.AddScoped<IBookingApprovalService, BookingApprovalService>();
 builder.Services.AddScoped<UserApprovalService>();
+builder.Services.AddScoped<Beauty.Api.Services.AcsStreamingService>();
 
 //Add Admin Login
 builder.Services.Configure<SeedSettings>(
