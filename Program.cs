@@ -5,6 +5,7 @@ using Beauty.Api.Models;
 using Beauty.Api.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
@@ -13,6 +14,7 @@ using MySqlConnector;
 using System.Security.Claims;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading.RateLimiting;
 
 // =================================================
 // 1. BUILDER
@@ -131,11 +133,42 @@ builder.Services.AddCors(options =>
     options.AddPolicy("Frontend", policy =>
     {
         policy
-            .WithOrigins("http://localhost:3000") // ✅ EXACT match
+            .WithOrigins(
+                "https://saqqarallc.com",
+                "https://www.saqqarallc.com",
+                "https://saqqarallc.net",
+                "https://www.saqqarallc.net",
+                "https://purple-tree-05ce20e0f.1.azurestaticapps.net",
+                "http://localhost:3000"
+            )
             .AllowAnyHeader()
             .AllowAnyMethod()
             .AllowCredentials();
     });
+});
+
+// Rate limiting
+builder.Services.AddRateLimiter(options =>
+{
+    // General API: 60 requests per minute per IP
+    options.AddFixedWindowLimiter("general", limiterOptions =>
+    {
+        limiterOptions.PermitLimit = 60;
+        limiterOptions.Window = TimeSpan.FromMinutes(1);
+        limiterOptions.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
+        limiterOptions.QueueLimit = 5;
+    });
+
+    // Auth endpoints: 10 requests per minute per IP
+    options.AddFixedWindowLimiter("auth", limiterOptions =>
+    {
+        limiterOptions.PermitLimit = 10;
+        limiterOptions.Window = TimeSpan.FromMinutes(1);
+        limiterOptions.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
+        limiterOptions.QueueLimit = 2;
+    });
+
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
 });
 
 
@@ -245,11 +278,12 @@ using (var scope = app.Services.CreateScope())
     var seed = services.GetRequiredService<IOptions<SeedSettings>>().Value;
 
     // ✅ Ensure roles exist (all environments)
-    if (!await roleManager.RoleExistsAsync("Admin"))
-        await roleManager.CreateAsync(new IdentityRole("Admin"));
-
-    if (!await roleManager.RoleExistsAsync("Staff"))
-        await roleManager.CreateAsync(new IdentityRole("Staff"));
+    var allRoles = new[] { "Admin", "Staff", "Artist", "Agent", "Company", "Client" };
+    foreach (var role in allRoles)
+    {
+        if (!await roleManager.RoleExistsAsync(role))
+            await roleManager.CreateAsync(new IdentityRole(role));
+    }
 
     // ✅ Seed users ONLY in development
     if (app.Environment.IsDevelopment())
@@ -332,6 +366,9 @@ app.UseStaticFiles();
 // 🔒 AUTHENTICATION & AUTHORIZATION
 app.UseAuthentication();
 app.UseAuthorization();
+
+// Rate limiting
+app.UseRateLimiter();
 
 // 🔒 DEFAULT DENY — everything requires auth unless [AllowAnonymous]
 app.MapControllers();

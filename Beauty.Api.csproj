@@ -50,4 +50,12 @@
 	  <Folder Include="Migrations\" />
 	</ItemGroup>
 
+	<!-- Exclude the src/ duplicate tree — real files live at root -->
+	<ItemGroup>
+	  <Compile Remove="src\**" />
+	  <Content Remove="src\**" />
+	  <EmbeddedResource Remove="src\**" />
+	  <None Remove="src\**" />
+	</ItemGroup>
+
 </Project>
