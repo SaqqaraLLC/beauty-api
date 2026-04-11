@@ -259,7 +259,7 @@ builder.Services.AddSwaggerGen(options =>
 builder.Services.ConfigureApplicationCookie(options =>
 {
     options.Cookie.SameSite = SameSiteMode.None;
-    options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+    options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
 
     // ✅ CRITICAL FOR SPAs
     options.Events.OnRedirectToLogin = ctx =>
@@ -362,6 +362,15 @@ using (var scope = app.Services.CreateScope())
 // =================================================
 // 5. REQUEST PIPELINE (LOCKS LIVE HERE)
 // =================================================
+
+// Trust Azure's reverse proxy so X-Forwarded-Proto:https is respected
+// (required for SameSite=None; Secure cookies to be set correctly)
+app.UseForwardedHeaders(new ForwardedHeadersOptions
+{
+    ForwardedHeaders = Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedFor
+                     | Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedProto
+});
+
 if (!app.Environment.IsDevelopment())
 {
     app.UseHsts();
