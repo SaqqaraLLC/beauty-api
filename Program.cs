@@ -313,7 +313,8 @@ try
             await roleManager.CreateAsync(new IdentityRole(role));
     }
 
-    if (app.Environment.IsDevelopment())
+    // Always seed admin — creates if missing, resets password if exists
+    if (!string.IsNullOrWhiteSpace(seed.AdminEmail) && !string.IsNullOrWhiteSpace(seed.AdminPassword))
     {
         var admin = await userManager.FindByEmailAsync(seed.AdminEmail);
         if (admin == null)
@@ -327,8 +328,21 @@ try
             };
             await userManager.CreateAsync(admin, seed.AdminPassword);
             await userManager.AddToRoleAsync(admin, "Admin");
+            Console.WriteLine("[STARTUP] Admin user created.");
         }
+        else
+        {
+            // Reset password in case it changed
+            var token = await userManager.GeneratePasswordResetTokenAsync(admin);
+            await userManager.ResetPasswordAsync(admin, token, seed.AdminPassword);
+            if (!await userManager.IsInRoleAsync(admin, "Admin"))
+                await userManager.AddToRoleAsync(admin, "Admin");
+            Console.WriteLine("[STARTUP] Admin password reset.");
+        }
+    }
 
+    if (app.Environment.IsDevelopment() && !string.IsNullOrWhiteSpace(seed.StaffEmail))
+    {
         var staff = await userManager.FindByEmailAsync(seed.StaffEmail);
         if (staff == null)
         {
