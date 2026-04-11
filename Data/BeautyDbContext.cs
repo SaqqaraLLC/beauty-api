@@ -2,6 +2,7 @@ using Beauty.Api.Models;
 using Beauty.Api.Models.ApprovalHistory;
 using Beauty.Api.Models.Enterprise;
 using Beauty.Api.Models.Locations;
+using Beauty.Api.Services;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
@@ -11,9 +12,14 @@ namespace Beauty.Api.Data;
 public class BeautyDbContext
     : IdentityDbContext<ApplicationUser, IdentityRole, string>
 {
-    public BeautyDbContext(DbContextOptions<BeautyDbContext> options)
+    private readonly ITenantContext _tenant;
+
+    public BeautyDbContext(
+        DbContextOptions<BeautyDbContext> options,
+        ITenantContext tenant)
         : base(options)
     {
+        _tenant = tenant;
     }
 
     // ── Existing sets ──────────────────────────────────────────────
@@ -50,6 +56,40 @@ public class BeautyDbContext
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
+
+        // ══════════════════════════════════════════════════════════
+        // GLOBAL QUERY FILTERS
+        // All tenant-scoped entities are filtered by:
+        //   1. Tenant isolation  — EnterpriseAccountId == CurrentTenantId
+        //                         (bypassed for platform users)
+        //   2. Soft delete       — !IsDeleted
+        // ══════════════════════════════════════════════════════════
+
+        builder.Entity<EnterpriseAccount>()
+            .HasQueryFilter(e => !e.IsDeleted);
+
+        builder.Entity<Models.Locations.Location>()
+            .HasQueryFilter(e =>
+                !e.IsDeleted &&
+                (_tenant.IsPlatformUser || e.EnterpriseAccountId == _tenant.CurrentTenantId));
+
+        builder.Entity<EnterpriseUser>()
+            .HasQueryFilter(e =>
+                !e.IsDeleted &&
+                (_tenant.IsPlatformUser || e.EnterpriseAccountId == _tenant.CurrentTenantId));
+
+        builder.Entity<EnterpriseClient>()
+            .HasQueryFilter(e =>
+                !e.IsDeleted &&
+                (_tenant.IsPlatformUser || e.EnterpriseAccountId == _tenant.CurrentTenantId));
+
+        builder.Entity<AuditLog>()
+            .HasQueryFilter(e =>
+                _tenant.IsPlatformUser || e.EnterpriseAccountId == _tenant.CurrentTenantId);
+
+        builder.Entity<Payment>()
+            .HasQueryFilter(e =>
+                _tenant.IsPlatformUser || e.EnterpriseAccountId == _tenant.CurrentTenantId);
 
         // ── Existing configuration ─────────────────────────────────
         builder.Entity<Booking>(entity =>
@@ -248,8 +288,7 @@ public class BeautyDbContext
         builder.Entity<EnterpriseAccount>(entity =>
         {
             entity.HasKey(x => x.Id);
-            entity.Property(x => x.LegalName).HasMaxLength(300).IsRequired();
-            entity.Property(x => x.DisplayName).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.Name).HasMaxLength(300).IsRequired();
             entity.Property(x => x.Status).HasMaxLength(50).IsRequired();
             entity.Property(x => x.BillingTier).HasMaxLength(100).IsRequired();
             entity.HasIndex(x => x.Status);
@@ -293,7 +332,6 @@ public class BeautyDbContext
         builder.Entity<EnterpriseUser>(entity =>
         {
             entity.HasKey(x => x.Id);
-            entity.Property(x => x.Email).HasMaxLength(256).IsRequired();
             entity.Property(x => x.Status).HasMaxLength(50).IsRequired();
 
             entity.HasOne(x => x.EnterpriseAccount)
@@ -307,7 +345,6 @@ public class BeautyDbContext
                 .OnDelete(DeleteBehavior.SetNull);
 
             entity.HasIndex(x => x.EnterpriseAccountId);
-            entity.HasIndex(x => new { x.EnterpriseAccountId, x.Email }).IsUnique();
             entity.HasIndex(x => x.Status);
         });
 
@@ -356,8 +393,7 @@ public class BeautyDbContext
             entity.HasKey(x => x.Id);
             entity.Property(x => x.ActorUserId).HasMaxLength(450).IsRequired();
             entity.Property(x => x.Action).HasMaxLength(200).IsRequired();
-            entity.Property(x => x.TargetType).HasMaxLength(100).IsRequired();
-            entity.Property(x => x.TargetId).HasMaxLength(200);
+            entity.Property(x => x.TargetEntity).HasMaxLength(300);
 
             entity.HasOne(x => x.EnterpriseAccount)
                 .WithMany()
@@ -367,24 +403,21 @@ public class BeautyDbContext
             entity.HasIndex(x => x.EnterpriseAccountId);
             entity.HasIndex(x => x.ActorUserId);
             entity.HasIndex(x => x.Timestamp);
-            entity.HasIndex(x => new { x.TargetType, x.TargetId });
         });
 
-        // ── Location (update: EnterpriseAccountId FK) ─────────────
+        // ── Location ──────────────────────────────────────────────
         builder.Entity<Models.Locations.Location>(entity =>
         {
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Name).HasMaxLength(200).IsRequired();
             entity.Property(x => x.Address).HasMaxLength(500).IsRequired();
-            entity.Property(x => x.Timezone).HasMaxLength(100);
 
             entity.HasOne(x => x.EnterpriseAccount)
                 .WithMany()
                 .HasForeignKey(x => x.EnterpriseAccountId)
-                .OnDelete(DeleteBehavior.SetNull);
+                .OnDelete(DeleteBehavior.Cascade);
 
             entity.HasIndex(x => x.EnterpriseAccountId);
-            entity.HasIndex(x => x.IsActive);
         });
     }
 }

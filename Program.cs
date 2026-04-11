@@ -1,3 +1,4 @@
+using Beauty.Api.Authorization;
 using Beauty.Api.Data;
 using Beauty.Api.Domain.Approvals;
 using Beauty.Api.Email;
@@ -29,8 +30,20 @@ Console.WriteLine($"[ENV] ASPNETCORE_ENVIRONMENT = {builder.Environment.Environm
 
 
 
-// Authorization must come AFTER authentication
-builder.Services.AddAuthorization();
+// Authorization — one policy per permission + tenant membership check
+builder.Services.AddAuthorization(options =>
+{
+    // Register one policy per atomic permission
+    foreach (var permission in Permissions.All)
+        options.AddPolicy(permission, policy =>
+            policy.RequireAuthenticatedUser()
+                  .RequireClaim("permission", permission));
+
+    // Tenant membership — user must carry a tenant_id claim
+    options.AddPolicy("TenantMember", policy =>
+        policy.RequireAuthenticatedUser()
+              .RequireClaim("tenant_id"));
+});
 
 // Database
 var connectionString = builder.Configuration.GetConnectionString("BeautyDb");
@@ -175,6 +188,10 @@ builder.Services.AddRateLimiter(options =>
 
 
 
+
+// Tenant context — resolves current EnterpriseAccountId from claims
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<ITenantContext, TenantContext>();
 
 // Booking workflow
 builder.Services.AddScoped<IBookingApprovalService, BookingApprovalService>();

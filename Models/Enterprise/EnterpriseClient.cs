@@ -3,7 +3,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace Beauty.Api.Models.Enterprise;
 
-public class EnterpriseClient
+public class EnterpriseClient : ISoftDeletable
 {
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
@@ -28,4 +28,8 @@ public class EnterpriseClient
     public string Status { get; set; } = "Pending";
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    // ISoftDeletable
+    public bool      IsDeleted { get; set; } = false;
+    public DateTime? DeletedAt { get; set; }
 }

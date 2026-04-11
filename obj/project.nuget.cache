@@ -1,9 +1,12 @@
 {
   "version": 2,
-  "dgSpecHash": "JzbEX3kaPX4=",
+  "dgSpecHash": "IBGYL/tWD8E=",
   "success": true,
-  "projectFilePath": "C:\\Saqqara LLC\\saqqara-email-flows\\src\\Beauty.Api\\Beauty.Api.csproj",
+  "projectFilePath": "C:\\Saqqara LLC\\saqqara-email-flows\\Beauty.Api.csproj",
   "expectedPackageFiles": [
+    "C:\\Users\\Fdaja\\.nuget\\packages\\azure.communication.common\\1.3.0\\azure.communication.common.1.3.0.nupkg.sha512",
+    "C:\\Users\\Fdaja\\.nuget\\packages\\azure.communication.identity\\1.3.1\\azure.communication.identity.1.3.1.nupkg.sha512",
+    "C:\\Users\\Fdaja\\.nuget\\packages\\azure.communication.rooms\\1.2.0\\azure.communication.rooms.1.2.0.nupkg.sha512",
     "C:\\Users\\Fdaja\\.nuget\\packages\\azure.core\\1.51.1\\azure.core.1.51.1.nupkg.sha512",
     "C:\\Users\\Fdaja\\.nuget\\packages\\azure.identity\\1.19.0\\azure.identity.1.19.0.nupkg.sha512",
     "C:\\Users\\Fdaja\\.nuget\\packages\\humanizer.core\\2.14.1\\humanizer.core.2.14.1.nupkg.sha512",
