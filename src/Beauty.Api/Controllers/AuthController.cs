@@ -32,6 +32,31 @@ public sealed class AuthController : ControllerBase
         _config = config;
     }
 
+    // ✅ REGISTER
+    [HttpPost("register")]
+    [AllowAnonymous]
+    public async Task<IActionResult> Register([FromBody] RegisterDto req)
+    {
+        var validRoles = new[] { "Artist", "Client", "Location", "Company", "Agent" };
+        if (!validRoles.Contains(req.Role))
+            return BadRequest(new { code = "INVALID_ROLE" });
+
+        var user = new ApplicationUser
+        {
+            UserName = req.Email,
+            Email    = req.Email,
+            Status   = "Pending",
+        };
+
+        var result = await _userManager.CreateAsync(user, req.Password);
+        if (!result.Succeeded)
+            return BadRequest(new { errors = result.Errors.Select(e => e.Description) });
+
+        await _userManager.AddToRoleAsync(user, req.Role);
+
+        return Ok();
+    }
+
     // ✅ LOGIN + LOCKOUT
     [HttpPost("login")]
     [AllowAnonymous]
