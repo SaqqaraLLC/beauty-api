@@ -7,6 +7,7 @@ using Beauty.Api.Models;
 using Beauty.Api.Services;
 using Beauty.Api.Services.Payments;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
@@ -363,13 +364,15 @@ using (var scope = app.Services.CreateScope())
 // 5. REQUEST PIPELINE (LOCKS LIVE HERE)
 // =================================================
 
-// Trust Azure's reverse proxy so X-Forwarded-Proto:https is respected
-// (required for SameSite=None; Secure cookies to be set correctly)
-app.UseForwardedHeaders(new ForwardedHeadersOptions
+// Trust Azure's reverse proxy — clears KnownNetworks/KnownProxies so Azure's
+// load balancer IPs are accepted, then reads X-Forwarded-Proto/For headers.
+var forwardedOptions = new ForwardedHeadersOptions
 {
-    ForwardedHeaders = Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedFor
-                     | Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedProto
-});
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+};
+forwardedOptions.KnownNetworks.Clear();
+forwardedOptions.KnownProxies.Clear();
+app.UseForwardedHeaders(forwardedOptions);
 
 if (!app.Environment.IsDevelopment())
 {
@@ -386,7 +389,8 @@ app.UseCors("Frontend");
 
 app.UseRateLimiter();
 
-app.UseHttpsRedirection();
+// NOTE: No UseHttpsRedirection — Azure's load balancer terminates HTTPS at the edge.
+// Adding it here would create redirect loops since Azure forwards internally as HTTP.
 
 app.UseDefaultFiles();
 app.UseStaticFiles();
