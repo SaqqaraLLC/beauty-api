@@ -439,6 +439,38 @@ app.MapGet("/health", async (BeautyDbContext db) =>
     return Results.Ok(new { status = "Healthy", db = dbStatus, dbError, timestamp = DateTime.UtcNow });
 })
    .AllowAnonymous();
+
+// Temporary admin reset — remove after first login
+app.MapPost("/admin-reset", async (
+    UserManager<ApplicationUser> userManager,
+    IConfiguration config) =>
+{
+    var email = config["Seed:AdminEmail"] ?? config["Seed__AdminEmail"];
+    var password = config["Seed:AdminPassword"] ?? config["Seed__AdminPassword"];
+
+    if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
+        return Results.BadRequest(new { error = "Seed settings not found in config" });
+
+    var user = await userManager.FindByEmailAsync(email);
+    if (user == null)
+    {
+        user = new ApplicationUser { UserName = email, Email = email, EmailConfirmed = true, Status = "Approved" };
+        var cr = await userManager.CreateAsync(user, password);
+        if (!cr.Succeeded) return Results.BadRequest(new { error = cr.Errors });
+        await userManager.AddToRoleAsync(user, "Admin");
+        return Results.Ok(new { result = "Admin created", email });
+    }
+
+    var token = await userManager.GeneratePasswordResetTokenAsync(user);
+    var rr = await userManager.ResetPasswordAsync(user, token, password);
+    await userManager.SetLockoutEndDateAsync(user, null);
+    await userManager.ResetAccessFailedCountAsync(user);
+    if (!await userManager.IsInRoleAsync(user, "Admin"))
+        await userManager.AddToRoleAsync(user, "Admin");
+
+    return Results.Ok(new { result = rr.Succeeded ? "Password reset and unlocked" : "Reset failed", errors = rr.Errors, email });
+})
+.AllowAnonymous();
 // Public endpoints
 
 app.Run();
