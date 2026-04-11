@@ -92,24 +92,14 @@ public class GraphEmailSender : IEmailSender
 
     private async Task SendAsync(Message message, string? fromOverride)
     {
+        var from = fromOverride ?? _opts.From;
 
-        var token = await _credential.GetTokenAsync(
-            new TokenRequestContext(new[] { "https://graph.microsoft.com/.default" })
-        );
-
-
-        Console.WriteLine("ACCESS TOKEN ACQUIRED");
-
-        // v5 style: .Users[from].SendMail.PostAsync(new SendMailPostRequestBody { ... })
-        // await _graph.Users[from]
-        //     .SendMail
-        //     .PostAsync(new Microsoft.Graph.Users.Item.SendMail.SendMailPostRequestBody
-        //     {
-        //         Message = message,
-        //         SaveToSentItems = true
-        //     });
-
-
-
+        await _graph.Users[from]
+            .SendMail
+            .PostAsync(new Microsoft.Graph.Users.Item.SendMail.SendMailPostRequestBody
+            {
+                Message = message,
+                SaveToSentItems = true
+            });
     }
 }
