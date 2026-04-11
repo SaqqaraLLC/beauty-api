@@ -263,7 +263,7 @@ builder.Services.AddSwaggerGen(options =>
 builder.Services.ConfigureApplicationCookie(options =>
 {
     options.Cookie.SameSite = SameSiteMode.None;
-    options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+    options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
 
     // ✅ CRITICAL FOR SPAs
     options.Events.OnRedirectToLogin = ctx =>
@@ -373,6 +373,38 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+
+// Must sit before UseCors so CORS headers survive unhandled 500s
+app.Use(async (ctx, next) =>
+{
+    try
+    {
+        await next(ctx);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(ex, "Unhandled exception");
+        var origin = ctx.Request.Headers.Origin.ToString();
+        string[] allowed = [
+            "https://saqqarallc.com", "https://www.saqqarallc.com",
+            "https://saqqarallc.net", "https://www.saqqarallc.net",
+            "https://purple-tree-05ce20e0f.1.azurestaticapps.net",
+            "http://localhost:3000"
+        ];
+        if (allowed.Contains(origin))
+        {
+            ctx.Response.Headers["Access-Control-Allow-Origin"] = origin;
+            ctx.Response.Headers["Access-Control-Allow-Credentials"] = "true";
+            ctx.Response.Headers["Vary"] = "Origin";
+        }
+        if (!ctx.Response.HasStarted)
+        {
+            ctx.Response.StatusCode = 500;
+            await ctx.Response.WriteAsJsonAsync(new { error = "Internal server error" });
+        }
+    }
+});
+
 app.UseCors("Frontend");
 
 app.UseHttpsRedirection();

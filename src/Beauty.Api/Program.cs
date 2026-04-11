@@ -146,7 +146,7 @@ builder.Services.AddCors(options =>
     options.AddPolicy("Frontend", policy =>
     {
         policy
-            .WithOrigins(allowedOrigins)
+            .SetIsOriginAllowed(_ => true) // Allow any origin (debug only!)
             .AllowAnyHeader()
             .AllowAnyMethod()
             .AllowCredentials();
