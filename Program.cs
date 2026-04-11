@@ -363,6 +363,8 @@ app.UseRateLimiter();
 
 // 🔒 DEFAULT DENY — everything requires auth unless [AllowAnonymous]
 app.MapControllers();
+app.MapGet("/health", () => Results.Ok(new { status = "Healthy", timestamp = DateTime.UtcNow }))
+   .AllowAnonymous();
 // Public endpoints
 
 app.Run();
