@@ -414,7 +414,14 @@ app.UseRateLimiter();
 
 // 🔒 DEFAULT DENY — everything requires auth unless [AllowAnonymous]
 app.MapControllers();
-app.MapGet("/health", () => Results.Ok(new { status = "Healthy", timestamp = DateTime.UtcNow }))
+app.MapGet("/health", async (BeautyDbContext db) =>
+{
+    string dbStatus;
+    string? dbError = null;
+    try { await db.Database.CanConnectAsync(); dbStatus = "Connected"; }
+    catch (Exception ex) { dbStatus = "Failed"; dbError = ex.Message; }
+    return Results.Ok(new { status = "Healthy", db = dbStatus, dbError, timestamp = DateTime.UtcNow });
+})
    .AllowAnonymous();
 // Public endpoints
 
