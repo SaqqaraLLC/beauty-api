@@ -62,6 +62,10 @@ builder.Services
             IdentityConstants.ApplicationScheme;
     })
     .AddCookie(IdentityConstants.ApplicationScheme)
+    // SignInManager needs the standard identity cookie schemes registered.
+    .AddCookie(IdentityConstants.TwoFactorRememberMeScheme)
+    .AddCookie(IdentityConstants.TwoFactorUserIdScheme)
+    .AddCookie(IdentityConstants.ExternalScheme)
     .AddJwtBearer(JwtBearerDefaults.AuthenticationScheme, options =>
     {
         var issuer = builder.Configuration["Jwt:Issuer"];
@@ -146,14 +150,7 @@ builder.Services.AddCors(options =>
     options.AddPolicy("Frontend", policy =>
     {
         policy
-            .WithOrigins(
-                "https://saqqarallc.com",
-                "https://www.saqqarallc.com",
-                "https://saqqarallc.net",
-                "https://www.saqqarallc.net",
-                "https://purple-tree-05ce20e0f.1.azurestaticapps.net",
-                "http://localhost:3000"
-            )
+            .SetIsOriginAllowed(_ => true)
             .AllowAnyHeader()
             .AllowAnyMethod()
             .AllowCredentials();
@@ -385,13 +382,7 @@ app.Use(async (ctx, next) =>
     {
         app.Logger.LogError(ex, "Unhandled exception");
         var origin = ctx.Request.Headers.Origin.ToString();
-        string[] allowed = [
-            "https://saqqarallc.com", "https://www.saqqarallc.com",
-            "https://saqqarallc.net", "https://www.saqqarallc.net",
-            "https://purple-tree-05ce20e0f.1.azurestaticapps.net",
-            "http://localhost:3000"
-        ];
-        if (allowed.Contains(origin))
+        if (!string.IsNullOrWhiteSpace(origin))
         {
             ctx.Response.Headers["Access-Control-Allow-Origin"] = origin;
             ctx.Response.Headers["Access-Control-Allow-Credentials"] = "true";
