@@ -440,41 +440,6 @@ app.MapGet("/health", async (BeautyDbContext db) =>
 })
    .AllowAnonymous();
 
-// Temporary admin reset — remove after first login
-app.MapPost("/admin-reset", async (
-    UserManager<ApplicationUser> userManager,
-    IConfiguration config) =>
-{
-    try
-    {
-        var email = "k.stephen@saqqarallc.com";
-        var password = "Admin123!";
-
-        var user = await userManager.FindByEmailAsync(email);
-        if (user == null)
-        {
-            user = new ApplicationUser { UserName = email, Email = email, EmailConfirmed = true, Status = "Approved" };
-            var cr = await userManager.CreateAsync(user, password);
-            if (!cr.Succeeded) return Results.Ok(new { result = "Create failed", errors = cr.Errors.Select(e => e.Description) });
-            await userManager.AddToRoleAsync(user, "Admin");
-            return Results.Ok(new { result = "Admin created", email });
-        }
-
-        var token = await userManager.GeneratePasswordResetTokenAsync(user);
-        var rr = await userManager.ResetPasswordAsync(user, token, password);
-        await userManager.SetLockoutEndDateAsync(user, null);
-        await userManager.ResetAccessFailedCountAsync(user);
-        if (!await userManager.IsInRoleAsync(user, "Admin"))
-            await userManager.AddToRoleAsync(user, "Admin");
-
-        return Results.Ok(new { result = rr.Succeeded ? "Password reset and unlocked" : "Reset failed", errors = rr.Errors.Select(e => e.Description), email });
-    }
-    catch (Exception ex)
-    {
-        return Results.Ok(new { result = "Exception", error = ex.Message });
-    }
-})
-.AllowAnonymous();
 // Public endpoints
 
 app.Run();
