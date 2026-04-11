@@ -68,7 +68,7 @@ public sealed class AuthController : ControllerBase
         var extraClaims = await BuildExtraClaimsAsync(user);
 
         await _signInManager.SignInWithClaimsAsync(user, isPersistent: true, extraClaims);
-        return Ok();
+        return Ok(new { success = true });
     }
 
 
@@ -89,7 +89,7 @@ public sealed class AuthController : ControllerBase
 
         var extraClaims = await BuildExtraClaimsAsync(user);
         await _signInManager.SignInWithClaimsAsync(user, isPersistent: true, extraClaims);
-        return Ok();
+        return Ok(new { success = true });
     }
 
     // ✅ MFA SETUP

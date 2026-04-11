@@ -6,6 +6,7 @@ obj/
 
 ## Secrets (managed via Azure App Settings)
 src/Beauty.Api/appsettings.Development.json
+appsettings.Production.json
 
 ## Logs
 *.log
