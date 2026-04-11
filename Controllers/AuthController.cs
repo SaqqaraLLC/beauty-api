@@ -41,34 +41,41 @@ public sealed class AuthController : ControllerBase
     [AllowAnonymous]
     public async Task<IActionResult> Login([FromBody] LoginDto req)
     {
-        var user = await _userManager.FindByEmailAsync(req.Email);
-        if (user == null)
-            return Unauthorized(new { code = "INVALID_CREDENTIALS" });
+        try
+        {
+            var user = await _userManager.FindByEmailAsync(req.Email);
+            if (user == null)
+                return Unauthorized(new { code = "INVALID_CREDENTIALS" });
 
-        // Check lockout before verifying password (prevents timing oracle)
-        if (await _userManager.IsLockedOutAsync(user))
-            return Unauthorized(new { code = "LOCKED_OUT" });
+            // Check lockout before verifying password (prevents timing oracle)
+            if (await _userManager.IsLockedOutAsync(user))
+                return Unauthorized(new { code = "LOCKED_OUT" });
 
-        var result = await _signInManager.CheckPasswordSignInAsync(
-            user,
-            req.Password,
-            lockoutOnFailure: true
-        );
+            var result = await _signInManager.CheckPasswordSignInAsync(
+                user,
+                req.Password,
+                lockoutOnFailure: true
+            );
 
-        if (result.IsLockedOut)
-            return Unauthorized(new { code = "LOCKED_OUT" });
+            if (result.IsLockedOut)
+                return Unauthorized(new { code = "LOCKED_OUT" });
 
-        if (result.RequiresTwoFactor)
-            return Ok(new { requiresMfa = true });
+            if (result.RequiresTwoFactor)
+                return Ok(new { requiresMfa = true });
 
-        if (!result.Succeeded)
-            return Unauthorized(new { code = "INVALID_CREDENTIALS" });
+            if (!result.Succeeded)
+                return Unauthorized(new { code = "INVALID_CREDENTIALS" });
 
-        // Build extra claims: tenant_id + permissions
-        var extraClaims = await BuildExtraClaimsAsync(user);
+            // Build extra claims: tenant_id + permissions
+            var extraClaims = await BuildExtraClaimsAsync(user);
 
-        await _signInManager.SignInWithClaimsAsync(user, isPersistent: true, extraClaims);
-        return Ok(new { success = true });
+            await _signInManager.SignInWithClaimsAsync(user, isPersistent: true, extraClaims);
+            return Ok(new { success = true });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { code = "LOGIN_ERROR", error = ex.Message, inner = ex.InnerException?.Message });
+        }
     }
 
 
