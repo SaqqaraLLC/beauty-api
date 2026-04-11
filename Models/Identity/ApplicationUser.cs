@@ -1,4 +1,5 @@
 ﻿
+using Beauty.Api.Models.Locations;
 using Microsoft.AspNetCore.Identity;
 
 namespace Beauty.Api.Models;

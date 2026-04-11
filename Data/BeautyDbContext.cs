@@ -1,6 +1,7 @@
 using Beauty.Api.Models;
 using Beauty.Api.Models.ApprovalHistory;
 using Beauty.Api.Models.Enterprise;
+using Beauty.Api.Models.Locations;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
@@ -26,7 +27,17 @@ public class BeautyDbContext
     public DbSet<Service> Services => Set<Service>();
     public DbSet<StreamQuotaOverride> StreamQuotaOverrides => Set<StreamQuotaOverride>();
 
-    // ── Enterprise sets ────────────────────────────────────────────
+    // ── Enterprise — canonical tenant entities ─────────────────────
+    public DbSet<EnterpriseAccount>  EnterpriseAccounts  => Set<EnterpriseAccount>();
+    public DbSet<EnterpriseUser>     EnterpriseUsers     => Set<EnterpriseUser>();
+    public DbSet<EnterpriseRole>     EnterpriseRoles     => Set<EnterpriseRole>();
+    public DbSet<Permission>         Permissions         => Set<Permission>();
+    public DbSet<RolePermission>     RolePermissions     => Set<RolePermission>();
+    public DbSet<EnterpriseClient>   EnterpriseClients   => Set<EnterpriseClient>();
+    public DbSet<Payment>            Payments            => Set<Payment>();
+    public DbSet<AuditLog>           AuditLogs           => Set<AuditLog>();
+
+    // ── Platform profile sets ──────────────────────────────────────
     public DbSet<ArtistProfile> ArtistProfiles => Set<ArtistProfile>();
     public DbSet<AgentProfile> AgentProfiles => Set<AgentProfile>();
     public DbSet<AgentRosterEntry> AgentRosterEntries => Set<AgentRosterEntry>();
@@ -231,6 +242,149 @@ public class BeautyDbContext
             entity.HasIndex(x => x.IsLive);
             entity.HasIndex(x => x.IsActive);
             entity.HasIndex(x => x.ArtistProfileId);
+        });
+
+        // ── EnterpriseAccount ─────────────────────────────────────
+        builder.Entity<EnterpriseAccount>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.LegalName).HasMaxLength(300).IsRequired();
+            entity.Property(x => x.DisplayName).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.Status).HasMaxLength(50).IsRequired();
+            entity.Property(x => x.BillingTier).HasMaxLength(100).IsRequired();
+            entity.HasIndex(x => x.Status);
+        });
+
+        // ── EnterpriseRole ────────────────────────────────────────
+        builder.Entity<EnterpriseRole>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Name).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.Scope).HasMaxLength(50).IsRequired();
+            entity.HasIndex(x => new { x.Name, x.Scope }).IsUnique();
+        });
+
+        // ── Permission ────────────────────────────────────────────
+        builder.Entity<Permission>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Name).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.Description).HasMaxLength(500);
+            entity.HasIndex(x => x.Name).IsUnique();
+        });
+
+        // ── RolePermission (junction) ─────────────────────────────
+        builder.Entity<RolePermission>(entity =>
+        {
+            entity.HasKey(x => new { x.RoleId, x.PermissionId });
+
+            entity.HasOne(x => x.Role)
+                .WithMany(r => r.RolePermissions)
+                .HasForeignKey(x => x.RoleId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(x => x.Permission)
+                .WithMany(p => p.RolePermissions)
+                .HasForeignKey(x => x.PermissionId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ── EnterpriseUser ────────────────────────────────────────
+        builder.Entity<EnterpriseUser>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Email).HasMaxLength(256).IsRequired();
+            entity.Property(x => x.Status).HasMaxLength(50).IsRequired();
+
+            entity.HasOne(x => x.EnterpriseAccount)
+                .WithMany()
+                .HasForeignKey(x => x.EnterpriseAccountId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(x => x.Role)
+                .WithMany()
+                .HasForeignKey(x => x.RoleId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasIndex(x => x.EnterpriseAccountId);
+            entity.HasIndex(x => new { x.EnterpriseAccountId, x.Email }).IsUnique();
+            entity.HasIndex(x => x.Status);
+        });
+
+        // ── EnterpriseClient ──────────────────────────────────────
+        builder.Entity<EnterpriseClient>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Name).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.Email).HasMaxLength(256).IsRequired();
+            entity.Property(x => x.Status).HasMaxLength(50).IsRequired();
+
+            entity.HasOne(x => x.EnterpriseAccount)
+                .WithMany()
+                .HasForeignKey(x => x.EnterpriseAccountId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(x => x.EnterpriseAccountId);
+            entity.HasIndex(x => new { x.EnterpriseAccountId, x.Email }).IsUnique();
+        });
+
+        // ── Payment ───────────────────────────────────────────────
+        builder.Entity<Payment>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Status).HasMaxLength(50).IsRequired();
+            entity.Property(x => x.ProcessorReference).HasMaxLength(200);
+
+            entity.HasOne(x => x.EnterpriseAccount)
+                .WithMany()
+                .HasForeignKey(x => x.EnterpriseAccountId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(x => x.Booking)
+                .WithMany(b => b.Payments)
+                .HasForeignKey(x => x.BookingId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasIndex(x => x.EnterpriseAccountId);
+            entity.HasIndex(x => x.BookingId);
+            entity.HasIndex(x => x.Status);
+        });
+
+        // ── AuditLog ──────────────────────────────────────────────
+        builder.Entity<AuditLog>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.ActorUserId).HasMaxLength(450).IsRequired();
+            entity.Property(x => x.Action).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.TargetType).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.TargetId).HasMaxLength(200);
+
+            entity.HasOne(x => x.EnterpriseAccount)
+                .WithMany()
+                .HasForeignKey(x => x.EnterpriseAccountId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(x => x.EnterpriseAccountId);
+            entity.HasIndex(x => x.ActorUserId);
+            entity.HasIndex(x => x.Timestamp);
+            entity.HasIndex(x => new { x.TargetType, x.TargetId });
+        });
+
+        // ── Location (update: EnterpriseAccountId FK) ─────────────
+        builder.Entity<Models.Locations.Location>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Name).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.Address).HasMaxLength(500).IsRequired();
+            entity.Property(x => x.Timezone).HasMaxLength(100);
+
+            entity.HasOne(x => x.EnterpriseAccount)
+                .WithMany()
+                .HasForeignKey(x => x.EnterpriseAccountId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasIndex(x => x.EnterpriseAccountId);
+            entity.HasIndex(x => x.IsActive);
         });
     }
 }
