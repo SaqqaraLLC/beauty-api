@@ -53,6 +53,12 @@ builder.Services
             IdentityConstants.ApplicationScheme;
     })
     .AddCookie(IdentityConstants.ApplicationScheme)
+    // SignInManager (AddIdentityCore) needs these three schemes registered manually —
+    // AddIdentity registers them automatically but AddIdentityCore does not.
+    // Missing them causes PasswordSignInAsync to throw 500 on every login attempt.
+    .AddCookie(IdentityConstants.TwoFactorRememberMeScheme)
+    .AddCookie(IdentityConstants.TwoFactorUserIdScheme)
+    .AddCookie(IdentityConstants.ExternalScheme)
     .AddJwtBearer(JwtBearerDefaults.AuthenticationScheme, options =>
     {
         var issuer = builder.Configuration["Jwt:Issuer"];
