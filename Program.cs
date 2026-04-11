@@ -353,6 +353,17 @@ catch (Exception ex)
     Console.WriteLine($"[STARTUP] Role seeding failed: {ex.Message}");
 }
 
+// ── 3. Seed enterprise roles + permissions ───────────────────────────────
+try
+{
+    await Beauty.Api.Services.PermissionSeeder.SeedAsync(app.Services);
+    Console.WriteLine("[STARTUP] Permission seeding succeeded.");
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"[STARTUP] Permission seeding failed: {ex.Message}");
+}
+
 
 // =================================================
 // 5. REQUEST PIPELINE (LOCKS LIVE HERE)

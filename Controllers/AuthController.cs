@@ -1,9 +1,12 @@
+using Beauty.Api.Authorization;
+using Beauty.Api.Data;
 using Beauty.Api.Email;
 using Beauty.Api.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.Data;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
@@ -19,15 +22,18 @@ public sealed class AuthController : ControllerBase
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly SignInManager<ApplicationUser> _signInManager;
     private readonly IConfiguration _config;
-    
+    private readonly BeautyDbContext _db;
+
     public AuthController(
         UserManager<ApplicationUser> userManager,
         SignInManager<ApplicationUser> signInManager,
-        IConfiguration config)
+        IConfiguration config,
+        BeautyDbContext db)
     {
         _userManager = userManager;
         _signInManager = signInManager;
         _config = config;
+        _db = db;
     }
 
     // ✅ LOGIN + LOCKOUT
@@ -35,10 +41,17 @@ public sealed class AuthController : ControllerBase
     [AllowAnonymous]
     public async Task<IActionResult> Login([FromBody] LoginDto req)
     {
-        var result = await _signInManager.PasswordSignInAsync(
-            req.Email,
+        var user = await _userManager.FindByEmailAsync(req.Email);
+        if (user == null)
+            return Unauthorized(new { code = "INVALID_CREDENTIALS" });
+
+        // Check lockout before verifying password (prevents timing oracle)
+        if (await _userManager.IsLockedOutAsync(user))
+            return Unauthorized(new { code = "LOCKED_OUT" });
+
+        var result = await _signInManager.CheckPasswordSignInAsync(
+            user,
             req.Password,
-            isPersistent: true,
             lockoutOnFailure: true
         );
 
@@ -51,6 +64,10 @@ public sealed class AuthController : ControllerBase
         if (!result.Succeeded)
             return Unauthorized(new { code = "INVALID_CREDENTIALS" });
 
+        // Build extra claims: tenant_id + permissions
+        var extraClaims = await BuildExtraClaimsAsync(user);
+
+        await _signInManager.SignInWithClaimsAsync(user, isPersistent: true, extraClaims);
         return Ok();
     }
 
@@ -70,7 +87,8 @@ public sealed class AuthController : ControllerBase
 
         if (!valid) return Unauthorized("Invalid code");
 
-        await _signInManager.SignInAsync(user, true);
+        var extraClaims = await BuildExtraClaimsAsync(user);
+        await _signInManager.SignInWithClaimsAsync(user, isPersistent: true, extraClaims);
         return Ok();
     }
 
@@ -108,6 +126,7 @@ if (string.IsNullOrEmpty(key))
             return Unauthorized();
 
         var roles = await _userManager.GetRolesAsync(user);
+        var extraClaims = await BuildExtraClaimsAsync(user);
 
         var claims = new List<Claim>
         {
@@ -115,15 +134,10 @@ if (string.IsNullOrEmpty(key))
             new Claim(ClaimTypes.Name, user.Email!)
         };
         claims.AddRange(roles.Select(r => new Claim(ClaimTypes.Role, r)));
-
+        claims.AddRange(extraClaims);
 
         var signingKey = new SymmetricSecurityKey(
             Encoding.UTF8.GetBytes(_config["Jwt:SigningKey"]!)
-        );
-
-        var credentials = new SigningCredentials(
-            signingKey,
-            SecurityAlgorithms.HmacSha256
         );
 
         var token = new JwtSecurityToken(
@@ -132,18 +146,10 @@ if (string.IsNullOrEmpty(key))
             claims: claims,
             notBefore: DateTime.UtcNow,
             expires: DateTime.UtcNow.AddHours(8),
-            signingCredentials: credentials
+            signingCredentials: new SigningCredentials(signingKey, SecurityAlgorithms.HmacSha256)
         );
 
-        var jwt = new JwtSecurityTokenHandler().WriteToken(token);
-
-        return Ok(new
-        {
-            access_token = jwt
-        }
-
-
-        ); 
+        return Ok(new { access_token = new JwtSecurityTokenHandler().WriteToken(token) });
     }
 
         // ✅ PASSWORD RESET
@@ -184,16 +190,59 @@ if (string.IsNullOrEmpty(key))
     {
         return Ok(new
         {
-            UserId = User.FindFirstValue(ClaimTypes.NameIdentifier),
-            Email = User.Identity?.Name,
-            Roles = User.Claims
-                .Where(c => c.Type == ClaimTypes.Role)
-                .Select(c => c.Value)
-                .ToArray()
+            userId      = User.FindFirstValue(ClaimTypes.NameIdentifier),
+            email       = User.Identity?.Name,
+            roles       = User.Claims.Where(c => c.Type == ClaimTypes.Role).Select(c => c.Value).ToArray(),
+            tenantId    = User.FindFirstValue("tenant_id"),
+            permissions = User.Claims.Where(c => c.Type == "permission").Select(c => c.Value).ToArray()
         });
     }
 
-    // ✅ Helpers
+    // ── Helpers ──────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Resolves tenant_id and permission claims for a user.
+    /// Platform roles (SuperAdmin etc.) get permissions from PermissionMatrix directly.
+    /// Enterprise users also get their tenant_id from EnterpriseUser.EnterpriseAccountId.
+    /// </summary>
+    private async Task<List<Claim>> BuildExtraClaimsAsync(ApplicationUser user)
+    {
+        var claims = new List<Claim>();
+
+        // 1. Platform role permissions (from ASP.NET Identity roles)
+        var roles = await _userManager.GetRolesAsync(user);
+        foreach (var role in roles)
+        {
+            if (PermissionMatrix.ByRole.TryGetValue(role, out var rolePerms))
+                claims.AddRange(rolePerms.Select(p => new Claim("permission", p)));
+        }
+
+        // 2. Enterprise tenant + enterprise role permissions
+        //    EnterpriseUser.UserId links back to ApplicationUser.Id
+        //    Use IgnoreQueryFilters so platform users can also load this if needed
+        var enterpriseUser = await _db.EnterpriseUsers
+            .Include(eu => eu.Role)
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(eu => eu.UserId == user.Id && !eu.IsDeleted);
+
+        if (enterpriseUser != null)
+        {
+            claims.Add(new Claim("tenant_id", enterpriseUser.EnterpriseAccountId.ToString()));
+
+            if (enterpriseUser.Role != null &&
+                PermissionMatrix.ByRole.TryGetValue(enterpriseUser.Role.Name, out var entPerms))
+            {
+                claims.AddRange(entPerms.Select(p => new Claim("permission", p)));
+            }
+        }
+
+        // Deduplicate — same permission may come from both platform role and enterprise role
+        return claims
+            .GroupBy(c => c.Type + "|" + c.Value)
+            .Select(g => g.First())
+            .ToList();
+    }
+
     private static string GenerateQrCodeUri(string email, string key)
         => $"otpauth://totp/Saqqara:{email}?secret={key}&issuer=Saqqara";
 }

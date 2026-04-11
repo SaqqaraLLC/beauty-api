@@ -14,6 +14,10 @@ public class EnterpriseUser : ISoftDeletable
     [ForeignKey(nameof(EnterpriseAccountId))]
     public EnterpriseAccount EnterpriseAccount { get; set; } = null!;
 
+    /// <summary>FK to AspNetUsers.Id — links this enterprise profile to an Identity account.</summary>
+    [MaxLength(450)]
+    public string? UserId { get; set; }
+
     public int? RoleId { get; set; }
 
     [ForeignKey(nameof(RoleId))]
