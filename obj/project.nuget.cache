@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "dgSpecHash": "IBGYL/tWD8E=",
+  "dgSpecHash": "v4yTqU6v9OM=",
   "success": true,
   "projectFilePath": "C:\\Saqqara LLC\\saqqara-email-flows\\Beauty.Api.csproj",
   "expectedPackageFiles": [
@@ -9,6 +9,8 @@
     "C:\\Users\\Fdaja\\.nuget\\packages\\azure.communication.rooms\\1.2.0\\azure.communication.rooms.1.2.0.nupkg.sha512",
     "C:\\Users\\Fdaja\\.nuget\\packages\\azure.core\\1.51.1\\azure.core.1.51.1.nupkg.sha512",
     "C:\\Users\\Fdaja\\.nuget\\packages\\azure.identity\\1.19.0\\azure.identity.1.19.0.nupkg.sha512",
+    "C:\\Users\\Fdaja\\.nuget\\packages\\azure.storage.blobs\\12.22.0\\azure.storage.blobs.12.22.0.nupkg.sha512",
+    "C:\\Users\\Fdaja\\.nuget\\packages\\azure.storage.common\\12.21.0\\azure.storage.common.12.21.0.nupkg.sha512",
     "C:\\Users\\Fdaja\\.nuget\\packages\\humanizer.core\\2.14.1\\humanizer.core.2.14.1.nupkg.sha512",
     "C:\\Users\\Fdaja\\.nuget\\packages\\microsoft.aspnetcore.authentication.jwtbearer\\8.0.3\\microsoft.aspnetcore.authentication.jwtbearer.8.0.3.nupkg.sha512",
     "C:\\Users\\Fdaja\\.nuget\\packages\\microsoft.aspnetcore.cryptography.internal\\8.0.4\\microsoft.aspnetcore.cryptography.internal.8.0.4.nupkg.sha512",
@@ -80,6 +82,7 @@
     "C:\\Users\\Fdaja\\.nuget\\packages\\system.composition.typedparts\\6.0.0\\system.composition.typedparts.6.0.0.nupkg.sha512",
     "C:\\Users\\Fdaja\\.nuget\\packages\\system.diagnostics.diagnosticsource\\10.0.3\\system.diagnostics.diagnosticsource.10.0.3.nupkg.sha512",
     "C:\\Users\\Fdaja\\.nuget\\packages\\system.identitymodel.tokens.jwt\\8.15.0\\system.identitymodel.tokens.jwt.8.15.0.nupkg.sha512",
+    "C:\\Users\\Fdaja\\.nuget\\packages\\system.io.hashing\\6.0.0\\system.io.hashing.6.0.0.nupkg.sha512",
     "C:\\Users\\Fdaja\\.nuget\\packages\\system.io.pipelines\\10.0.1\\system.io.pipelines.10.0.1.nupkg.sha512",
     "C:\\Users\\Fdaja\\.nuget\\packages\\system.memory.data\\10.0.1\\system.memory.data.10.0.1.nupkg.sha512",
     "C:\\Users\\Fdaja\\.nuget\\packages\\system.reflection.metadata\\6.0.1\\system.reflection.metadata.6.0.1.nupkg.sha512",

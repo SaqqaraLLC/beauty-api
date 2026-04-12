@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
+using Beauty.Api.Services;
 
 namespace Beauty.Api.Controllers;
 
@@ -18,15 +19,18 @@ public class AdminController : ControllerBase
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly UserApprovalService _approvalService;
     private readonly BeautyDbContext _db;
+    private readonly BlobStorageService _blob;
 
     public AdminController(
         UserManager<ApplicationUser> userManager,
         UserApprovalService approvalService,
-        BeautyDbContext db)
+        BeautyDbContext db,
+        BlobStorageService blob)
     {
         _userManager = userManager;
         _approvalService = approvalService;
         _db = db;
+        _blob = blob;
     }
 
     // ── User Approval ────────────────────────────────────────────────
@@ -144,6 +148,18 @@ public class AdminController : ControllerBase
 
         await _db.SaveChangesAsync();
         return Ok(new { doc.Id, doc.Status });
+    }
+
+    // GET /admin/documents/{id}/view  — returns a 1-hour SAS URL for the file
+    [HttpGet("documents/{id}/view")]
+    public async Task<IActionResult> ViewDocument(string id)
+    {
+        var doc = await _db.UserDocuments.FindAsync(id);
+        if (doc == null) return NotFound();
+        if (doc.FileUrl == null) return NotFound(new { message = "No file attached to this document." });
+
+        var sasUrl = _blob.GenerateSasUrl(doc.FileUrl, expiryMinutes: 60);
+        return Ok(new { url = sasUrl, expiresInMinutes = 60 });
     }
 
     public record RejectDocumentRequest(string Reason);

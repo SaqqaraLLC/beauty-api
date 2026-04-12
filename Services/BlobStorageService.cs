@@ -1,0 +1,60 @@
+using Azure.Storage.Blobs;
+using Azure.Storage.Blobs.Models;
+using Azure.Storage.Sas;
+
+namespace Beauty.Api.Services;
+
+public class BlobStorageService
+{
+    private readonly BlobServiceClient _client;
+    private readonly string _container;
+
+    public BlobStorageService(IConfiguration config)
+    {
+        var connStr = config["Storage:ConnectionString"]
+            ?? throw new InvalidOperationException("Storage:ConnectionString is missing.");
+        _container = config["Storage:Container"] ?? "documents";
+        _client = new BlobServiceClient(connStr);
+    }
+
+    /// <summary>Upload a file and return the blob name (not a public URL).</summary>
+    public async Task<string> UploadAsync(Stream data, string fileName, string contentType)
+    {
+        // Use a UUID-based name so original filenames are never exposed
+        var ext = Path.GetExtension(fileName).ToLowerInvariant();
+        var blobName = $"{Guid.NewGuid()}{ext}";
+
+        var container = _client.GetBlobContainerClient(_container);
+        await container.CreateIfNotExistsAsync(PublicAccessType.None);
+
+        var blob = container.GetBlobClient(blobName);
+        await blob.UploadAsync(data, new BlobHttpHeaders { ContentType = contentType });
+
+        return blobName;
+    }
+
+    /// <summary>Generate a short-lived SAS URL (1 hour) so admins can view a document.</summary>
+    public string GenerateSasUrl(string blobName, int expiryMinutes = 60)
+    {
+        var container = _client.GetBlobContainerClient(_container);
+        var blob = container.GetBlobClient(blobName);
+
+        var sasBuilder = new BlobSasBuilder
+        {
+            BlobContainerName = _container,
+            BlobName = blobName,
+            Resource = "b",
+            ExpiresOn = DateTimeOffset.UtcNow.AddMinutes(expiryMinutes)
+        };
+        sasBuilder.SetPermissions(BlobSasPermissions.Read);
+
+        return blob.GenerateSasUri(sasBuilder).ToString();
+    }
+
+    public async Task DeleteAsync(string blobName)
+    {
+        var container = _client.GetBlobContainerClient(_container);
+        var blob = container.GetBlobClient(blobName);
+        await blob.DeleteIfExistsAsync();
+    }
+}

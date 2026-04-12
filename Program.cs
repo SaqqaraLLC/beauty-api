@@ -203,6 +203,9 @@ builder.Services.Configure<SeedSettings>(
 builder.Services.Configure<EmailOptions>(
     builder.Configuration.GetSection("Email"));
 
+// Blob Storage
+builder.Services.AddSingleton<Beauty.Api.Services.BlobStorageService>();
+
 builder.Services.AddScoped<IEmailSender, GraphEmailSender>();
 builder.Services.AddSingleton<ITemplateRenderer, FileTemplateRenderer>();
 builder.Services.AddScoped<EmailTemplateService>();
