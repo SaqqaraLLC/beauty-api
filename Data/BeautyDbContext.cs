@@ -43,6 +43,9 @@ public class BeautyDbContext
     public DbSet<Payment>            Payments            => Set<Payment>();
     public DbSet<AuditLog>           AuditLogs           => Set<AuditLog>();
 
+    // ── Documents ─────────────────────────────────────────────────
+    public DbSet<UserDocument> UserDocuments => Set<UserDocument>();
+
     // ── Platform profile sets ──────────────────────────────────────
     public DbSet<ArtistProfile> ArtistProfiles => Set<ArtistProfile>();
     public DbSet<AgentProfile> AgentProfiles => Set<AgentProfile>();
@@ -263,6 +266,25 @@ public class BeautyDbContext
                 .OnDelete(DeleteBehavior.Cascade);
 
             entity.HasIndex(x => new { x.ArtistProfileId, x.Date });
+        });
+
+        // ── UserDocument ─────────────────────────────────────────
+        builder.Entity<UserDocument>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.UserId).HasMaxLength(450).IsRequired();
+            entity.Property(x => x.OwnerType).HasMaxLength(50).IsRequired();
+            entity.Property(x => x.DocumentType).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.DocumentName).HasMaxLength(300).IsRequired();
+            entity.Property(x => x.DocumentNumber).HasMaxLength(100);
+            entity.Property(x => x.Status).HasMaxLength(50).IsRequired();
+            entity.Property(x => x.RejectionReason).HasMaxLength(1000);
+            entity.Property(x => x.FileUrl).HasMaxLength(1000);
+            entity.Property(x => x.ReviewedByUserId).HasMaxLength(450);
+
+            entity.HasIndex(x => x.UserId);
+            entity.HasIndex(x => x.Status);
+            entity.HasIndex(x => x.OwnerType);
         });
 
         // ── Stream ────────────────────────────────────────────────
