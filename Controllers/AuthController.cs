@@ -160,14 +160,21 @@ if (string.IsNullOrEmpty(key))
           [FromServices] EmailTemplateService emailSvc,
           [FromBody] ForgotDto dto)
     {
-            var user = await _userManager.FindByEmailAsync(dto.Email);
-            if (user == null) return Ok();
+        var user = await _userManager.FindByEmailAsync(dto.Email);
+        if (user == null) return Ok();
 
-            var token = await _userManager.GeneratePasswordResetTokenAsync(user);
-            var resetUrl = $"{_config["Brand:PrimaryResetUrl"]}?email={Uri.EscapeDataString(user.Email!)}&token={Uri.EscapeDataString(token)}";
+        var token = await _userManager.GeneratePasswordResetTokenAsync(user);
+        var resetUrl = $"{_config["Brand:PrimaryResetUrl"]}?email={Uri.EscapeDataString(user.Email!)}&token={Uri.EscapeDataString(token)}";
 
+        try
+        {
             await emailSvc.SendResetAsync(user.Email!, user.Email!, resetUrl);
             return Ok();
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { error = ex.Message, detail = ex.InnerException?.Message });
+        }
     }
 
     [HttpPost("reset-password")]
