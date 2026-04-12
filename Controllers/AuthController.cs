@@ -36,6 +36,48 @@ public sealed class AuthController : ControllerBase
         _db = db;
     }
 
+    // ✅ REGISTER (creates Pending account, triggers approval flow)
+    [HttpPost("register")]
+    [AllowAnonymous]
+    public async Task<IActionResult> Register(
+        [FromServices] EmailTemplateService emailSvc,
+        [FromBody] RegisterDto req)
+    {
+        var allowedRoles = new[] { "Artist", "Client", "Company", "Agent", "Location" };
+        if (!allowedRoles.Contains(req.Role))
+            return BadRequest(new { code = "INVALID_ROLE" });
+
+        var existing = await _userManager.FindByEmailAsync(req.Email);
+        if (existing != null)
+            return Conflict(new { code = "EMAIL_TAKEN" });
+
+        var user = new ApplicationUser
+        {
+            UserName = req.Email,
+            Email = req.Email,
+            EmailConfirmed = false,
+            Status = "Pending"
+        };
+
+        var result = await _userManager.CreateAsync(user, req.Password);
+        if (!result.Succeeded)
+            return BadRequest(new { code = "VALIDATION_ERROR", errors = result.Errors.Select(e => e.Description) });
+
+        await _userManager.AddToRoleAsync(user, req.Role);
+
+        // Notify applicant
+        _ = emailSvc.SendApplicationReceivedAsync(req.Email, req.Role).ContinueWith(_ => { });
+
+        // Alert admin
+        _ = emailSvc.SendAdminAsync(
+            _config["Email:AdminAlertsTo"] ?? "admin@saqqarallc.com",
+            $"New {req.Role} application — {req.Email}",
+            $"A new <strong>{req.Role}</strong> application has been submitted by <strong>{req.Email}</strong>.<br><br>Review it in the admin dashboard."
+        ).ContinueWith(_ => { });
+
+        return Ok(new { success = true });
+    }
+
     // ✅ LOGIN + LOCKOUT
     [HttpPost("login")]
     [AllowAnonymous]

@@ -16,13 +16,24 @@ namespace Beauty.Api.Email
 
         public Task SendWelcomeAsync(string to, string fullName, string loginUrl)
         {
-            // ✅ Instantiate a concrete Dictionary (never "new IDictionary<,>")
             var data = new Dictionary<string, string>
             {
                 ["FullName"] = fullName,
-                ["LoginUrl"] = loginUrl
+                ["LoginUrl"] = loginUrl,
+                ["Year"] = System.DateTime.UtcNow.Year.ToString()
             };
             return Send("welcome", to, "Welcome to Saqqara LLC", data);
+        }
+
+        public Task SendApplicationReceivedAsync(string to, string role)
+        {
+            var data = new Dictionary<string, string>
+            {
+                ["Email"] = to,
+                ["Role"] = role,
+                ["Year"] = System.DateTime.UtcNow.Year.ToString()
+            };
+            return Send("application_received", to, "Your Saqqara application has been received", data);
         }
 
         public Task SendResetAsync(string to, string userName, string resetUrl)
@@ -30,7 +41,8 @@ namespace Beauty.Api.Email
             var data = new Dictionary<string, string>
             {
                 ["UserName"] = userName,
-                ["ResetUrl"] = resetUrl
+                ["ResetUrl"] = resetUrl,
+                ["Year"] = System.DateTime.UtcNow.Year.ToString()
             };
             return Send("password_reset", to, "Reset your password", data);
         }
@@ -40,20 +52,18 @@ namespace Beauty.Api.Email
             var data = new Dictionary<string, string>
             {
                 ["MessageBody"] = messageBody,
-                ["Timestamp"] = System.DateTime.UtcNow.ToString("u")
+                ["Timestamp"] = System.DateTime.UtcNow.ToString("u"),
+                ["Year"] = System.DateTime.UtcNow.Year.ToString()
             };
             return Send("admin_alert", to, subject, data);
         }
 
-        // Accept the interface so callers can pass any dictionary,
-        // but ensure call sites construct "new Dictionary<string,string>"
         private async Task Send(
             string template,
             string to,
             string subject,
             IDictionary<string, string> data)
         {
-            // Render is synchronous in your implementation
             var html = _renderer.Render(template, data);
             await _sender.SendHtmlAsync(to, subject, html);
         }
