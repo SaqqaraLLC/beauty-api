@@ -1,4 +1,5 @@
-﻿using Beauty.Api.Data;
+using Beauty.Api.Data;
+using Beauty.Api.Email;
 using Beauty.Api.Models;
 using Beauty.Api.Models.ApprovalHistory;
 using Beauty.Api.Services;
@@ -6,11 +7,33 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Xunit;
 
 namespace Beauty.Api.Tests;
+
+// ── Test stubs ──────────────────────────────────────────────────────────────
+
+sealed class PlatformTenant : ITenantContext
+{
+    public Guid? CurrentTenantId => null;
+    public bool IsPlatformUser => true;
+}
+
+sealed class NullEmailSender : IEmailSender
+{
+    public Task SendHtmlAsync(string to, string subject, string html, string? fromOverride = null) => Task.CompletedTask;
+    public Task SendHtmlWithAttachmentAsync(string to, string subject, string html, string fileName, byte[] content, string contentType, string? fromOverride = null) => Task.CompletedTask;
+}
+
+sealed class NullTemplateRenderer : ITemplateRenderer
+{
+    public string Render(string templateName, IDictionary<string, string> model) => string.Empty;
+}
+
+// ── Tests ───────────────────────────────────────────────────────────────────
 
 public class AdminApprovalTests
 {
@@ -21,7 +44,7 @@ public class AdminApprovalTests
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
 
-        using var db = new BeautyDbContext(options);
+        using var db = new BeautyDbContext(options, new PlatformTenant());
 
         var userStore = new UserStore<ApplicationUser>(db);
         var roleStore = new RoleStore<IdentityRole>(db);
@@ -46,6 +69,8 @@ public class AdminApprovalTests
             null
         );
 
+        var emailService = new EmailTemplateService(new NullEmailSender(), new NullTemplateRenderer());
+
         // Seed roles
         await roleManager.CreateAsync(new IdentityRole("Admin"));
         await roleManager.CreateAsync(new IdentityRole("Client"));
@@ -53,7 +78,8 @@ public class AdminApprovalTests
         var approvalService = new UserApprovalService(
             userManager,
             roleManager,
-            db
+            db,
+            emailService
         );
 
         var admin = new ApplicationUser
@@ -73,10 +99,7 @@ public class AdminApprovalTests
             Status = "Pending"
         };
 
-        // ✅ REQUIRED
         await userManager.CreateAsync(pendingUser);
-
-        // ✅ REQUIRED
         await approvalService.ApproveUserAsync(pendingUser, admin.Id);
 
         // Assert role
@@ -85,7 +108,7 @@ public class AdminApprovalTests
         Assert.Contains("Client", roles);
 
         // Assert status
-        Assert.Equal("Approved", refreshedUser.Status);
+        Assert.Equal("Approved", refreshedUser!.Status);
 
         // Assert audit
         var audit = db.ApprovalHistories.Single();

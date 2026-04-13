@@ -4,6 +4,7 @@ using Beauty.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Beauty.Api.Migrations
 {
     [DbContext(typeof(BeautyDbContext))]
-    partial class BeautyDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260413001749_AddCompanyBookings")]
+    partial class AddCompanyBookings
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -303,194 +306,6 @@ namespace Beauty.Api.Migrations
                     b.ToTable("Bookings");
                 });
 
-            modelBuilder.Entity("Beauty.Api.Models.Catalog.Product", b =>
-                {
-                    b.Property<int>("ProductId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("ProductId"));
-
-                    b.Property<DateTime?>("ApprovedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<double>("AverageRating")
-                        .HasColumnType("double");
-
-                    b.Property<string>("Brand")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("varchar(200)");
-
-                    b.Property<string>("Category")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("varchar(100)");
-
-                    b.Property<string>("DeclineReason")
-                        .HasMaxLength(1000)
-                        .HasColumnType("varchar(1000)");
-
-                    b.Property<DateTime?>("DeclinedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(2000)
-                        .HasColumnType("varchar(2000)");
-
-                    b.Property<string>("ImageUrl")
-                        .HasMaxLength(500)
-                        .HasColumnType("varchar(500)");
-
-                    b.Property<string>("Ingredients")
-                        .HasMaxLength(3000)
-                        .HasColumnType("varchar(3000)");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("varchar(200)");
-
-                    b.Property<int>("ReviewCount")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Sku")
-                        .HasMaxLength(100)
-                        .HasColumnType("varchar(100)");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("varchar(20)");
-
-                    b.Property<DateTime>("SubmittedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("SubmittedByUserId")
-                        .HasMaxLength(450)
-                        .HasColumnType("varchar(450)");
-
-                    b.Property<string>("VendorName")
-                        .HasMaxLength(200)
-                        .HasColumnType("varchar(200)");
-
-                    b.Property<int>("WholesalePriceCents")
-                        .HasColumnType("int");
-
-                    b.HasKey("ProductId");
-
-                    b.HasIndex("Category");
-
-                    b.HasIndex("IsActive");
-
-                    b.HasIndex("Status");
-
-                    b.HasIndex("VendorName");
-
-                    b.ToTable("Products");
-                });
-
-            modelBuilder.Entity("Beauty.Api.Models.Catalog.ProductReview", b =>
-                {
-                    b.Property<int>("ReviewId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("ReviewId"));
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("Notes")
-                        .HasMaxLength(2000)
-                        .HasColumnType("varchar(2000)");
-
-                    b.Property<int>("ProductId")
-                        .HasColumnType("int");
-
-                    b.Property<int>("Rating")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Recommendation")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("varchar(20)");
-
-                    b.Property<string>("ReviewerName")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("varchar(200)");
-
-                    b.Property<string>("ReviewerRole")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("varchar(50)");
-
-                    b.Property<string>("ReviewerUserId")
-                        .IsRequired()
-                        .HasMaxLength(450)
-                        .HasColumnType("varchar(450)");
-
-                    b.HasKey("ReviewId");
-
-                    b.HasIndex("ProductId");
-
-                    b.HasIndex("ReviewerUserId");
-
-                    b.ToTable("ProductReviews");
-                });
-
-            modelBuilder.Entity("Beauty.Api.Models.Catalog.PromoCode", b =>
-                {
-                    b.Property<int>("PromoCodeId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("PromoCodeId"));
-
-                    b.Property<string>("Code")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("varchar(50)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(300)
-                        .HasColumnType("varchar(300)");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<int?>("MaxUses")
-                        .HasColumnType("int");
-
-                    b.Property<decimal>("ProductMarkupMultiplier")
-                        .HasColumnType("decimal(4,2)");
-
-                    b.Property<int>("UsedCount")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime?>("ValidFrom")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<DateTime?>("ValidUntil")
-                        .HasColumnType("datetime(6)");
-
-                    b.HasKey("PromoCodeId");
-
-                    b.HasIndex("Code")
-                        .IsUnique();
-
-                    b.HasIndex("IsActive");
-
-                    b.ToTable("PromoCodes");
-                });
-
             modelBuilder.Entity("Beauty.Api.Models.Company.CompanyBooking", b =>
                 {
                     b.Property<long>("Id")
@@ -600,91 +415,6 @@ namespace Beauty.Api.Migrations
                     b.HasIndex("CompanyBookingId");
 
                     b.ToTable("CompanyBookingArtistSlots");
-                });
-
-            modelBuilder.Entity("Beauty.Api.Models.Company.Invoice", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<long>("Id"));
-
-                    b.Property<long?>("CompanyBookingId")
-                        .HasColumnType("bigint");
-
-                    b.Property<long>("CompanyId")
-                        .HasColumnType("bigint");
-
-                    b.Property<DateTime>("DueAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("InvoiceNumber")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.Property<DateTime>("IssuedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("IssuedByUserId")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.Property<string>("Notes")
-                        .HasColumnType("longtext");
-
-                    b.Property<DateTime?>("PaidAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<DateTime?>("PdfGeneratedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("PdfUrl")
-                        .HasColumnType("longtext");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("varchar(20)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CompanyBookingId");
-
-                    b.HasIndex("CompanyId");
-
-                    b.ToTable("Invoices");
-                });
-
-            modelBuilder.Entity("Beauty.Api.Models.Company.InvoiceLineItem", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<long>("Id"));
-
-                    b.Property<string>("Description")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.Property<decimal?>("DiscountPercent")
-                        .HasColumnType("decimal(5,2)");
-
-                    b.Property<long>("InvoiceId")
-                        .HasColumnType("bigint");
-
-                    b.Property<int>("Quantity")
-                        .HasColumnType("int");
-
-                    b.Property<int>("UnitPriceCents")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("InvoiceId");
-
-                    b.ToTable("InvoiceLineItems");
                 });
 
             modelBuilder.Entity("Beauty.Api.Models.CompanyProfile", b =>
@@ -1354,57 +1084,6 @@ namespace Beauty.Api.Migrations
                     b.ToTable("Permissions");
                 });
 
-            modelBuilder.Entity("Beauty.Api.Models.Enterprise.RepresentationRequest", b =>
-                {
-                    b.Property<int>("RepresentationRequestId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("RepresentationRequestId"));
-
-                    b.Property<int>("AgentProfileId")
-                        .HasColumnType("int");
-
-                    b.Property<int>("ArtistProfileId")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("Message")
-                        .HasMaxLength(1000)
-                        .HasColumnType("varchar(1000)");
-
-                    b.Property<string>("RequestedByUserId")
-                        .IsRequired()
-                        .HasMaxLength(450)
-                        .HasColumnType("varchar(450)");
-
-                    b.Property<DateTime?>("RespondedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("ResponseNote")
-                        .HasMaxLength(500)
-                        .HasColumnType("varchar(500)");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("varchar(20)");
-
-                    b.HasKey("RepresentationRequestId");
-
-                    b.HasIndex("AgentProfileId");
-
-                    b.HasIndex("ArtistProfileId");
-
-                    b.HasIndex("Status");
-
-                    b.HasIndex("AgentProfileId", "ArtistProfileId");
-
-                    b.ToTable("RepresentationRequests");
-                });
-
             modelBuilder.Entity("Beauty.Api.Models.Enterprise.Review", b =>
                 {
                     b.Property<int>("ReviewId")
@@ -1579,28 +1258,9 @@ namespace Beauty.Api.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("varchar(200)");
 
-                    b.Property<string>("OwnerUserId")
-                        .HasMaxLength(450)
-                        .HasColumnType("varchar(450)");
-
-                    b.Property<DateTime?>("PureAccountActivatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("PureAccountStatus")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("varchar(30)");
-
-                    b.Property<DateTime?>("PureFirstOrderPlacedAt")
-                        .HasColumnType("datetime(6)");
-
                     b.HasKey("Id");
 
                     b.HasIndex("EnterpriseAccountId");
-
-                    b.HasIndex("OwnerUserId");
-
-                    b.HasIndex("PureAccountStatus");
 
                     b.ToTable("Locations");
                 });
@@ -1919,17 +1579,6 @@ namespace Beauty.Api.Migrations
                     b.Navigation("EnterpriseAccount");
                 });
 
-            modelBuilder.Entity("Beauty.Api.Models.Catalog.ProductReview", b =>
-                {
-                    b.HasOne("Beauty.Api.Models.Catalog.Product", "Product")
-                        .WithMany("Reviews")
-                        .HasForeignKey("ProductId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Product");
-                });
-
             modelBuilder.Entity("Beauty.Api.Models.Company.CompanyBooking", b =>
                 {
                     b.HasOne("Beauty.Api.Models.CompanyProfile", "Company")
@@ -1950,35 +1599,6 @@ namespace Beauty.Api.Migrations
                         .IsRequired();
 
                     b.Navigation("CompanyBooking");
-                });
-
-            modelBuilder.Entity("Beauty.Api.Models.Company.Invoice", b =>
-                {
-                    b.HasOne("Beauty.Api.Models.Company.CompanyBooking", "CompanyBooking")
-                        .WithMany()
-                        .HasForeignKey("CompanyBookingId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.HasOne("Beauty.Api.Models.CompanyProfile", "Company")
-                        .WithMany()
-                        .HasForeignKey("CompanyId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Company");
-
-                    b.Navigation("CompanyBooking");
-                });
-
-            modelBuilder.Entity("Beauty.Api.Models.Company.InvoiceLineItem", b =>
-                {
-                    b.HasOne("Beauty.Api.Models.Company.Invoice", "Invoice")
-                        .WithMany("LineItems")
-                        .HasForeignKey("InvoiceId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Invoice");
                 });
 
             modelBuilder.Entity("Beauty.Api.Models.Enterprise.AgentRosterEntry", b =>
@@ -2080,25 +1700,6 @@ namespace Beauty.Api.Migrations
                     b.Navigation("EnterpriseAccount");
                 });
 
-            modelBuilder.Entity("Beauty.Api.Models.Enterprise.RepresentationRequest", b =>
-                {
-                    b.HasOne("Beauty.Api.Models.Enterprise.AgentProfile", "AgentProfile")
-                        .WithMany()
-                        .HasForeignKey("AgentProfileId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("Beauty.Api.Models.Enterprise.ArtistProfile", "ArtistProfile")
-                        .WithMany()
-                        .HasForeignKey("ArtistProfileId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("AgentProfile");
-
-                    b.Navigation("ArtistProfile");
-                });
-
             modelBuilder.Entity("Beauty.Api.Models.Enterprise.RolePermission", b =>
                 {
                     b.HasOne("Beauty.Api.Models.Enterprise.Permission", "Permission")
@@ -2196,19 +1797,9 @@ namespace Beauty.Api.Migrations
                     b.Navigation("Payments");
                 });
 
-            modelBuilder.Entity("Beauty.Api.Models.Catalog.Product", b =>
-                {
-                    b.Navigation("Reviews");
-                });
-
             modelBuilder.Entity("Beauty.Api.Models.Company.CompanyBooking", b =>
                 {
                     b.Navigation("ArtistSlots");
-                });
-
-            modelBuilder.Entity("Beauty.Api.Models.Company.Invoice", b =>
-                {
-                    b.Navigation("LineItems");
                 });
 
             modelBuilder.Entity("Beauty.Api.Models.Enterprise.EnterpriseRole", b =>

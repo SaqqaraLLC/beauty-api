@@ -4,6 +4,7 @@ using Beauty.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Beauty.Api.Migrations
 {
     [DbContext(typeof(BeautyDbContext))]
-    partial class BeautyDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260413015411_AddProductCatalog")]
+    partial class AddProductCatalog
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -441,54 +444,6 @@ namespace Beauty.Api.Migrations
                     b.HasIndex("ReviewerUserId");
 
                     b.ToTable("ProductReviews");
-                });
-
-            modelBuilder.Entity("Beauty.Api.Models.Catalog.PromoCode", b =>
-                {
-                    b.Property<int>("PromoCodeId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("PromoCodeId"));
-
-                    b.Property<string>("Code")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("varchar(50)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(300)
-                        .HasColumnType("varchar(300)");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<int?>("MaxUses")
-                        .HasColumnType("int");
-
-                    b.Property<decimal>("ProductMarkupMultiplier")
-                        .HasColumnType("decimal(4,2)");
-
-                    b.Property<int>("UsedCount")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime?>("ValidFrom")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<DateTime?>("ValidUntil")
-                        .HasColumnType("datetime(6)");
-
-                    b.HasKey("PromoCodeId");
-
-                    b.HasIndex("Code")
-                        .IsUnique();
-
-                    b.HasIndex("IsActive");
-
-                    b.ToTable("PromoCodes");
                 });
 
             modelBuilder.Entity("Beauty.Api.Models.Company.CompanyBooking", b =>
@@ -1579,28 +1534,9 @@ namespace Beauty.Api.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("varchar(200)");
 
-                    b.Property<string>("OwnerUserId")
-                        .HasMaxLength(450)
-                        .HasColumnType("varchar(450)");
-
-                    b.Property<DateTime?>("PureAccountActivatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("PureAccountStatus")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("varchar(30)");
-
-                    b.Property<DateTime?>("PureFirstOrderPlacedAt")
-                        .HasColumnType("datetime(6)");
-
                     b.HasKey("Id");
 
                     b.HasIndex("EnterpriseAccountId");
-
-                    b.HasIndex("OwnerUserId");
-
-                    b.HasIndex("PureAccountStatus");
 
                     b.ToTable("Locations");
                 });

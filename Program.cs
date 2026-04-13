@@ -178,6 +178,15 @@ builder.Services.AddRateLimiter(options =>
         limiterOptions.QueueLimit = 2;
     });
 
+    // Public API v1: 30 requests per minute per IP
+    options.AddFixedWindowLimiter("public-api", limiterOptions =>
+    {
+        limiterOptions.PermitLimit = 30;
+        limiterOptions.Window = TimeSpan.FromMinutes(1);
+        limiterOptions.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
+        limiterOptions.QueueLimit = 0;
+    });
+
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
 });
 
@@ -209,6 +218,8 @@ builder.Services.AddSingleton<Beauty.Api.Services.BlobStorageService>();
 builder.Services.AddScoped<IEmailSender, GraphEmailSender>();
 builder.Services.AddSingleton<ITemplateRenderer, FileTemplateRenderer>();
 builder.Services.AddScoped<EmailTemplateService>();
+builder.Services.AddScoped<ContractGeneratorService>();
+builder.Services.AddScoped<InvoiceGeneratorService>();
 
 // Controllers & Swagger
 builder.Services.AddControllers();
@@ -378,6 +389,36 @@ try
 catch (Exception ex)
 {
     Console.WriteLine($"[STARTUP] Permission seeding failed: {ex.Message}");
+}
+
+// ── 4. Seed promo codes ──────────────────────────────────────────────────
+try
+{
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<Beauty.Api.Data.BeautyDbContext>();
+
+    if (!await db.PromoCodes.AnyAsync(p => p.Code == "SAQQARA"))
+    {
+        db.PromoCodes.Add(new Beauty.Api.Models.Catalog.PromoCode
+        {
+            Code                    = "SAQQARA",
+            Description             = "Saqqara promotional rate — %PURE product kit at 60% markup (standard 80%)",
+            ProductMarkupMultiplier = 1.6m,
+            MaxUses                 = null,   // unlimited
+            IsActive                = true,
+            CreatedAt               = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+        Console.WriteLine("[STARTUP] Promo code SAQQARA seeded.");
+    }
+    else
+    {
+        Console.WriteLine("[STARTUP] Promo code SAQQARA already exists.");
+    }
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"[STARTUP] Promo code seeding failed: {ex.Message}");
 }
 
 

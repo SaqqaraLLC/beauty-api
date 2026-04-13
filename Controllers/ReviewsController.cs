@@ -188,6 +188,103 @@ public class ReviewsController : ControllerBase
             });
     }
 
+    // ── GET /api/reviews/admin ──────────────────────────────────────
+    // Admin: list all reviews across all statuses with optional filters
+
+    [HttpGet("admin")]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> AdminGetAll(
+        [FromQuery] string? status,
+        [FromQuery] string? entityType,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 30)
+    {
+        pageSize = Math.Clamp(pageSize, 1, 100);
+        page     = Math.Max(1, page);
+
+        var query = _db.Reviews.AsNoTracking().AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(status))
+            query = query.Where(r => r.Status == status);
+
+        if (!string.IsNullOrWhiteSpace(entityType))
+            query = query.Where(r => r.SubjectEntityType == entityType);
+
+        var total = await query.CountAsync();
+
+        var reviews = await query
+            .OrderByDescending(r => r.CreatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync();
+
+        return Ok(new
+        {
+            page, pageSize, total,
+            totalPages = (int)Math.Ceiling(total / (double)pageSize),
+            data = reviews.Select(r => new
+            {
+                reviewId          = r.ReviewId,
+                bookingId         = r.BookingId,
+                reviewerUserId    = r.ReviewerUserId,
+                reviewerRole      = r.ReviewerRole,
+                reviewerName      = r.ReviewerName,
+                reviewerAvatarUrl = r.ReviewerAvatarUrl,
+                subjectEntityType = r.SubjectEntityType,
+                subjectEntityId   = r.SubjectEntityId,
+                subjectName       = r.SubjectName,
+                rating            = r.Rating,
+                title             = r.Title,
+                body              = r.Body,
+                isVerifiedBooking = r.IsVerifiedBooking,
+                status            = r.Status,
+                createdAt         = r.CreatedAt
+            })
+        });
+    }
+
+    // ── POST /api/reviews/{id}/publish ─────────────────────────────
+
+    [HttpPost("{id:int}/publish")]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> Publish(int id)
+    {
+        var review = await _db.Reviews.FindAsync(id);
+        if (review is null) return NotFound();
+
+        var prev = review.Status;
+        review.Status = "Published";
+        await _db.SaveChangesAsync();
+
+        // Recalculate if transitioning from non-published
+        if (prev != "Published")
+            await RecalculateRatingsAsync(review.SubjectEntityType, review.SubjectEntityId);
+
+        return Ok(new { reviewId = id, status = "Published" });
+    }
+
+    // ── POST /api/reviews/{id}/remove ──────────────────────────────
+
+    [HttpPost("{id:int}/remove")]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> Remove(int id, [FromBody] RemoveReviewReq? body)
+    {
+        var review = await _db.Reviews.FindAsync(id);
+        if (review is null) return NotFound();
+
+        var prev = review.Status;
+        review.Status = "Removed";
+        await _db.SaveChangesAsync();
+
+        // Recalculate if was published
+        if (prev == "Published")
+            await RecalculateRatingsAsync(review.SubjectEntityType, review.SubjectEntityId);
+
+        return Ok(new { reviewId = id, status = "Removed" });
+    }
+
+    public record RemoveReviewReq(string? Reason);
+
     // ── Recalculate helper ───────────────────────────────────────────
 
     private async Task RecalculateRatingsAsync(string entityType, int entityId)

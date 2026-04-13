@@ -1,5 +1,7 @@
 using Beauty.Api.Models;
 using Beauty.Api.Models.ApprovalHistory;
+using Beauty.Api.Models.Catalog;
+using Beauty.Api.Models.Company;
 using Beauty.Api.Models.Enterprise;
 using Beauty.Api.Models.Locations;
 using Beauty.Api.Services;
@@ -43,6 +45,18 @@ public class BeautyDbContext
     public DbSet<Payment>            Payments            => Set<Payment>();
     public DbSet<AuditLog>           AuditLogs           => Set<AuditLog>();
 
+    // ── Company Bookings ──────────────────────────────────────────
+    public DbSet<CompanyProfile>            CompanyProfiles            => Set<CompanyProfile>();
+    public DbSet<CompanyBooking>            CompanyBookings            => Set<CompanyBooking>();
+    public DbSet<CompanyBookingArtistSlot>  CompanyBookingArtistSlots  => Set<CompanyBookingArtistSlot>();
+    public DbSet<Invoice>                   Invoices                   => Set<Invoice>();
+    public DbSet<InvoiceLineItem>           InvoiceLineItems           => Set<InvoiceLineItem>();
+
+    // ── Product Catalog ───────────────────────────────────────────
+    public DbSet<Product>       Products       => Set<Product>();
+    public DbSet<ProductReview> ProductReviews => Set<ProductReview>();
+    public DbSet<PromoCode>     PromoCodes     => Set<PromoCode>();
+
     // ── Documents ─────────────────────────────────────────────────
     public DbSet<UserDocument> UserDocuments => Set<UserDocument>();
 
@@ -50,6 +64,7 @@ public class BeautyDbContext
     public DbSet<ArtistProfile> ArtistProfiles => Set<ArtistProfile>();
     public DbSet<AgentProfile> AgentProfiles => Set<AgentProfile>();
     public DbSet<AgentRosterEntry> AgentRosterEntries => Set<AgentRosterEntry>();
+    public DbSet<RepresentationRequest> RepresentationRequests => Set<RepresentationRequest>();
     public DbSet<Review> Reviews => Set<Review>();
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<FeaturedSlot> FeaturedSlots => Set<FeaturedSlot>();
@@ -198,6 +213,34 @@ public class BeautyDbContext
             entity.HasIndex(x => x.AgentProfileId);
             entity.HasIndex(x => x.ArtistProfileId);
             entity.HasIndex(x => new { x.AgentProfileId, x.ArtistProfileId }).IsUnique();
+        });
+
+        // ── RepresentationRequest ─────────────────────────────────
+        builder.Entity<RepresentationRequest>(entity =>
+        {
+            entity.HasKey(x => x.RepresentationRequestId);
+
+            entity.Property(x => x.RequestedByUserId).HasMaxLength(450).IsRequired();
+            entity.Property(x => x.Message).HasMaxLength(1000);
+            entity.Property(x => x.ResponseNote).HasMaxLength(500);
+            entity.Property(x => x.Status)
+                .HasConversion<string>()
+                .HasMaxLength(20);
+
+            entity.HasOne(x => x.AgentProfile)
+                .WithMany()
+                .HasForeignKey(x => x.AgentProfileId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(x => x.ArtistProfile)
+                .WithMany()
+                .HasForeignKey(x => x.ArtistProfileId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(x => x.AgentProfileId);
+            entity.HasIndex(x => x.ArtistProfileId);
+            entity.HasIndex(x => x.Status);
+            entity.HasIndex(x => new { x.AgentProfileId, x.ArtistProfileId });
         });
 
         // ── Review ────────────────────────────────────────────────
@@ -433,6 +476,10 @@ public class BeautyDbContext
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Name).HasMaxLength(200).IsRequired();
             entity.Property(x => x.Address).HasMaxLength(500).IsRequired();
+            entity.Property(x => x.OwnerUserId).HasMaxLength(450);
+            entity.Property(x => x.PureAccountStatus).HasMaxLength(30);
+
+            entity.Ignore(x => x.PureFirstOrderDaysRemaining);
 
             entity.HasOne(x => x.EnterpriseAccount)
                 .WithMany()
@@ -440,6 +487,131 @@ public class BeautyDbContext
                 .OnDelete(DeleteBehavior.Cascade);
 
             entity.HasIndex(x => x.EnterpriseAccountId);
+            entity.HasIndex(x => x.OwnerUserId);
+            entity.HasIndex(x => x.PureAccountStatus);
+        });
+
+        // ── CompanyBooking ─────────────────────────────────────────
+        builder.Entity<CompanyBooking>(entity =>
+        {
+            entity.Property(x => x.Status)
+                .HasConversion<string>()
+                .HasMaxLength(50);
+
+            entity.Property(x => x.PackageDiscountPercent)
+                .HasColumnType("decimal(5,2)");
+
+            entity.HasOne(x => x.Company)
+                .WithMany()
+                .HasForeignKey(x => x.CompanyId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasMany(x => x.ArtistSlots)
+                .WithOne(x => x.CompanyBooking)
+                .HasForeignKey(x => x.CompanyBookingId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<CompanyBookingArtistSlot>(entity =>
+        {
+            entity.Property(x => x.Status)
+                .HasConversion<string>()
+                .HasMaxLength(20);
+        });
+
+        // ── Invoice ────────────────────────────────────────────────
+        builder.Entity<Invoice>(entity =>
+        {
+            entity.Property(x => x.Status)
+                .HasConversion<string>()
+                .HasMaxLength(20);
+
+            entity.HasOne(x => x.Company)
+                .WithMany()
+                .HasForeignKey(x => x.CompanyId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(x => x.CompanyBooking)
+                .WithMany()
+                .HasForeignKey(x => x.CompanyBookingId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasMany(x => x.LineItems)
+                .WithOne(x => x.Invoice)
+                .HasForeignKey(x => x.InvoiceId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<InvoiceLineItem>(entity =>
+        {
+            entity.Property(x => x.DiscountPercent)
+                .HasColumnType("decimal(5,2)");
+
+            entity.Ignore(x => x.TotalCents);
+        });
+
+        // ── Product ────────────────────────────────────────────────
+        builder.Entity<Product>(entity =>
+        {
+            entity.HasKey(x => x.ProductId);
+
+            entity.Property(x => x.Name).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.Brand).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.Category).HasMaxLength(100);
+            entity.Property(x => x.Description).HasMaxLength(2000);
+            entity.Property(x => x.Ingredients).HasMaxLength(3000);
+            entity.Property(x => x.Sku).HasMaxLength(100);
+            entity.Property(x => x.VendorName).HasMaxLength(200);
+            entity.Property(x => x.ImageUrl).HasMaxLength(500);
+            entity.Property(x => x.DeclineReason).HasMaxLength(1000);
+            entity.Property(x => x.SubmittedByUserId).HasMaxLength(450);
+            entity.Property(x => x.AverageRating).HasColumnType("double");
+
+            entity.Property(x => x.Status)
+                .HasConversion<string>()
+                .HasMaxLength(20);
+
+            entity.Ignore(x => x.BilledPriceCents);
+
+            entity.HasMany(x => x.Reviews)
+                .WithOne(x => x.Product)
+                .HasForeignKey(x => x.ProductId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(x => x.Status);
+            entity.HasIndex(x => x.Category);
+            entity.HasIndex(x => x.VendorName);
+            entity.HasIndex(x => x.IsActive);
+        });
+
+        // ── PromoCode ──────────────────────────────────────────────
+        builder.Entity<PromoCode>(entity =>
+        {
+            entity.HasKey(x => x.PromoCodeId);
+
+            entity.Property(x => x.Code).HasMaxLength(50).IsRequired();
+            entity.Property(x => x.Description).HasMaxLength(300);
+            entity.Property(x => x.ProductMarkupMultiplier).HasColumnType("decimal(4,2)");
+
+            entity.Ignore(x => x.IsValid);
+
+            entity.HasIndex(x => x.Code).IsUnique();
+            entity.HasIndex(x => x.IsActive);
+        });
+
+        // ── ProductReview ──────────────────────────────────────────
+        builder.Entity<ProductReview>(entity =>
+        {
+            entity.HasKey(x => x.ReviewId);
+
+            entity.Property(x => x.ReviewerUserId).HasMaxLength(450).IsRequired();
+            entity.Property(x => x.ReviewerName).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.ReviewerRole).HasMaxLength(50);
+            entity.Property(x => x.Notes).HasMaxLength(2000);
+            entity.Property(x => x.Recommendation).HasMaxLength(20);
+
+            entity.HasIndex(x => x.ProductId);
+            entity.HasIndex(x => x.ReviewerUserId);
         });
     }
 }

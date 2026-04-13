@@ -70,13 +70,13 @@ public class AdminController : ControllerBase
     }
 
     [HttpPost("reject/{id}")]
-    public async Task<IActionResult> Reject(string id)
+    public async Task<IActionResult> Reject(string id, [FromBody] RejectRequest body)
     {
+        var adminId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         var user = await _userManager.FindByIdAsync(id);
         if (user == null) return NotFound();
 
-        user.Status = "Rejected";
-        await _userManager.UpdateAsync(user);
+        await _approvalService.RejectUserAsync(user, adminId!, body.Reason ?? string.Empty);
         return Ok();
     }
 
@@ -163,4 +163,5 @@ public class AdminController : ControllerBase
     }
 
     public record RejectDocumentRequest(string Reason);
+    public record RejectRequest(string? Reason);
 }

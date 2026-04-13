@@ -23,6 +23,36 @@ public class Location : ISoftDeletable
     [MaxLength(500)]
     public string Address { get; set; } = "";
 
+    /// <summary>Identity user who owns/manages this location.</summary>
+    [MaxLength(450)]
+    public string? OwnerUserId { get; set; }
+
+    // ── 100% PURE wholesale account tracking ──────────────────────
+
+    /// <summary>Date admin activated the %PURE wholesale account for this location.
+    /// Starts the 60-day first-order clock.</summary>
+    public DateTime? PureAccountActivatedAt { get; set; }
+
+    /// <summary>Date the first %PURE order was placed. Stops the countdown.</summary>
+    public DateTime? PureFirstOrderPlacedAt { get; set; }
+
+    /// <summary>NotSetup | Active | FirstOrderPlaced | Lapsed</summary>
+    [MaxLength(30)]
+    public string PureAccountStatus { get; set; } = "NotSetup";
+
+    /// <summary>Days remaining to place first order. Null if not applicable.</summary>
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public int? PureFirstOrderDaysRemaining
+    {
+        get
+        {
+            if (PureAccountActivatedAt is null || PureFirstOrderPlacedAt is not null)
+                return null;
+            var deadline = PureAccountActivatedAt.Value.AddDays(60);
+            return (int)Math.Ceiling((deadline - DateTime.UtcNow).TotalDays);
+        }
+    }
+
     // ISoftDeletable
     public bool      IsDeleted { get; set; } = false;
     public DateTime? DeletedAt { get; set; }
