@@ -19,4 +19,8 @@ public class CompanyBookingArtistSlot
     public SlotStatus Status { get; set; } = SlotStatus.Pending;
     public DateTime? RespondedAt { get; set; }
     public string? ResponseNote { get; set; }
+
+    // ── Check-in ───────────────────────────────────────────────────
+    public bool      ArtistCheckedIn   { get; set; } = false;
+    public DateTime? ArtistCheckedInAt { get; set; }
 }

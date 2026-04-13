@@ -43,6 +43,18 @@ public class Booking
     // ── Status ─────────────────────────────────────────────────────
     public BookingStatus Status { get; set; } = BookingStatus.Requested;
 
+    // ── Check-in ───────────────────────────────────────────────────
+    public bool      ArtistCheckedIn   { get; set; } = false;
+    public DateTime? ArtistCheckedInAt { get; set; }
+
+    // ── Service completion ─────────────────────────────────────────
+    public bool      ServiceCompleted   { get; set; } = false;
+    public DateTime? ServiceCompletedAt { get; set; }
+
+    // ── Reminder flags (prevent duplicate notifications) ───────────
+    public bool Reminder24hSent { get; set; } = false;
+    public bool Reminder2hSent  { get; set; } = false;
+
     // ── Approval workflow ──────────────────────────────────────────
     public ApprovalDecision ArtistApproval { get; set; }   = ApprovalDecision.Pending;
     public ApprovalDecision LocationApproval { get; set; } = ApprovalDecision.Pending;
