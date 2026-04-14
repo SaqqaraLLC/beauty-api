@@ -3,9 +3,11 @@ using Beauty.Api.Email;
 using Beauty.Api.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace Beauty.Api.Controllers;
 
+[EnableRateLimiting("general")]
 [ApiController]
 [Route("api/overrides")]
 [Authorize]

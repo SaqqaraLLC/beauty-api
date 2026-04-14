@@ -149,11 +149,27 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("Frontend", policy =>
     {
-        policy
-            .SetIsOriginAllowed(_ => true)
-            .AllowAnyHeader()
-            .AllowAnyMethod()
-            .AllowCredentials();
+        if (builder.Environment.IsDevelopment())
+        {
+            // Development: allow any origin so localhost:3000 works
+            policy
+                .SetIsOriginAllowed(_ => true)
+                .AllowAnyHeader()
+                .AllowAnyMethod()
+                .AllowCredentials();
+        }
+        else
+        {
+            // Production: restrict to known Saqqara domains only
+            policy
+                .WithOrigins(
+                    "https://saqqarallc.com",
+                    "https://www.saqqarallc.com",
+                    "https://app.saqqarallc.com")
+                .AllowAnyHeader()
+                .AllowAnyMethod()
+                .AllowCredentials();
+        }
     });
 });
 
@@ -198,6 +214,9 @@ builder.Services.AddRateLimiter(options =>
 // Tenant context — resolves current EnterpriseAccountId from claims
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ITenantContext, TenantContext>();
+
+// Audit logging
+builder.Services.AddScoped<Beauty.Api.Services.AuditService>();
 
 // Booking workflow
 builder.Services.AddScoped<IBookingApprovalService, BookingApprovalService>();

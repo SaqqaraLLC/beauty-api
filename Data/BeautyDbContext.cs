@@ -457,17 +457,23 @@ public class BeautyDbContext
         {
             entity.HasKey(x => x.Id);
             entity.Property(x => x.ActorUserId).HasMaxLength(450).IsRequired();
+            entity.Property(x => x.ActorEmail).HasMaxLength(256);
             entity.Property(x => x.Action).HasMaxLength(200).IsRequired();
             entity.Property(x => x.TargetEntity).HasMaxLength(300);
+            entity.Property(x => x.Details).HasMaxLength(2000);
+            entity.Property(x => x.IpAddress).HasMaxLength(64);
 
+            // EnterpriseAccountId is optional — system events have no tenant
             entity.HasOne(x => x.EnterpriseAccount)
                 .WithMany()
                 .HasForeignKey(x => x.EnterpriseAccountId)
-                .OnDelete(DeleteBehavior.Cascade);
+                .IsRequired(false)
+                .OnDelete(DeleteBehavior.SetNull);
 
             entity.HasIndex(x => x.EnterpriseAccountId);
             entity.HasIndex(x => x.ActorUserId);
             entity.HasIndex(x => x.Timestamp);
+            entity.HasIndex(x => x.Action);
         });
 
         // ── Location ──────────────────────────────────────────────

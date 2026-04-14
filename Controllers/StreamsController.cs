@@ -3,11 +3,13 @@ using Beauty.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
 
 namespace Beauty.Api.Controllers;
 
+[EnableRateLimiting("general")]
 [ApiController]
 [Route("api/streams")]
 public class StreamsController : ControllerBase

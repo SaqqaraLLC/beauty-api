@@ -7,10 +7,12 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 
 namespace Beauty.Api.Controllers;
 
+[EnableRateLimiting("general")]
 [ApiController]
 [Route("api/bookings")]
 public class BookingsController : ControllerBase

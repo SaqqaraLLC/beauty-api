@@ -2,10 +2,12 @@ using Beauty.Api.Data;
 using Beauty.Api.Models.Catalog;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 
 namespace Beauty.Api.Controllers;
 
+[EnableRateLimiting("general")]
 [ApiController]
 [Route("api/promo-codes")]
 public class PromoCodesController : ControllerBase

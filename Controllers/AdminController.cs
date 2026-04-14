@@ -5,13 +5,14 @@ using Beauty.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
-using Beauty.Api.Services;
 
 namespace Beauty.Api.Controllers;
 
 [Authorize(Roles = "Admin")]
+[EnableRateLimiting("general")]
 [ApiController]
 [Route("admin")]
 public class AdminController : ControllerBase
@@ -20,18 +21,24 @@ public class AdminController : ControllerBase
     private readonly UserApprovalService _approvalService;
     private readonly BeautyDbContext _db;
     private readonly BlobStorageService _blob;
+    private readonly AuditService _audit;
 
     public AdminController(
         UserManager<ApplicationUser> userManager,
         UserApprovalService approvalService,
         BeautyDbContext db,
-        BlobStorageService blob)
+        BlobStorageService blob,
+        AuditService audit)
     {
         _userManager = userManager;
         _approvalService = approvalService;
         _db = db;
         _blob = blob;
+        _audit = audit;
     }
+
+    private string ActorId => User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "unknown";
+    private string ActorEmail => User.FindFirstValue(ClaimTypes.Email) ?? "";
 
     // ── User Approval ────────────────────────────────────────────────
 
@@ -61,22 +68,34 @@ public class AdminController : ControllerBase
     [HttpPost("approve/{id}")]
     public async Task<IActionResult> Approve(string id)
     {
-        var adminId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         var user = await _userManager.FindByIdAsync(id);
         if (user == null) return NotFound();
 
-        await _approvalService.ApproveUserAsync(user, adminId!);
+        await _approvalService.ApproveUserAsync(user, ActorId);
+
+        await _audit.LogAsync(ActorId, "Admin.UserApproved",
+            targetEntity: $"User/{id}",
+            details: $"Email={user.Email}",
+            actorEmail: ActorEmail,
+            resultCode: 200);
+
         return Ok();
     }
 
     [HttpPost("reject/{id}")]
     public async Task<IActionResult> Reject(string id, [FromBody] RejectRequest body)
     {
-        var adminId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         var user = await _userManager.FindByIdAsync(id);
         if (user == null) return NotFound();
 
-        await _approvalService.RejectUserAsync(user, adminId!, body.Reason ?? string.Empty);
+        await _approvalService.RejectUserAsync(user, ActorId, body.Reason ?? string.Empty);
+
+        await _audit.LogAsync(ActorId, "Admin.UserRejected",
+            targetEntity: $"User/{id}",
+            details: $"Email={user.Email} Reason={body.Reason}",
+            actorEmail: ActorEmail,
+            resultCode: 200);
+
         return Ok();
     }
 
@@ -96,7 +115,6 @@ public class AdminController : ControllerBase
 
         var docs = await query.OrderByDescending(d => d.CreatedAt).ToListAsync();
 
-        // Fetch owner emails
         var userIds = docs.Select(d => d.UserId).Distinct().ToList();
         var users = await _userManager.Users
             .Where(u => userIds.Contains(u.Id))
@@ -125,12 +143,18 @@ public class AdminController : ControllerBase
         var doc = await _db.UserDocuments.FindAsync(id);
         if (doc == null) return NotFound();
 
-        var adminId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         doc.Status = "Verified";
         doc.ReviewedAt = DateTime.UtcNow;
-        doc.ReviewedByUserId = adminId;
+        doc.ReviewedByUserId = ActorId;
 
         await _db.SaveChangesAsync();
+
+        await _audit.LogAsync(ActorId, "Admin.DocumentVerified",
+            targetEntity: $"Document/{id}",
+            details: $"Type={doc.DocumentType}",
+            actorEmail: ActorEmail,
+            resultCode: 200);
+
         return Ok(new { doc.Id, doc.Status });
     }
 
@@ -140,17 +164,22 @@ public class AdminController : ControllerBase
         var doc = await _db.UserDocuments.FindAsync(id);
         if (doc == null) return NotFound();
 
-        var adminId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         doc.Status = "Rejected";
         doc.RejectionReason = req.Reason;
         doc.ReviewedAt = DateTime.UtcNow;
-        doc.ReviewedByUserId = adminId;
+        doc.ReviewedByUserId = ActorId;
 
         await _db.SaveChangesAsync();
+
+        await _audit.LogAsync(ActorId, "Admin.DocumentRejected",
+            targetEntity: $"Document/{id}",
+            details: $"Type={doc.DocumentType} Reason={req.Reason}",
+            actorEmail: ActorEmail,
+            resultCode: 200);
+
         return Ok(new { doc.Id, doc.Status });
     }
 
-    // GET /admin/documents/{id}/view  — returns a 1-hour SAS URL for the file
     [HttpGet("documents/{id}/view")]
     public async Task<IActionResult> ViewDocument(string id)
     {
@@ -158,8 +187,63 @@ public class AdminController : ControllerBase
         if (doc == null) return NotFound();
         if (doc.FileUrl == null) return NotFound(new { message = "No file attached to this document." });
 
+        await _audit.LogAsync(ActorId, "Admin.DocumentViewed",
+            targetEntity: $"Document/{id}",
+            actorEmail: ActorEmail,
+            resultCode: 200);
+
         var sasUrl = _blob.GenerateSasUrl(doc.FileUrl, expiryMinutes: 60);
         return Ok(new { url = sasUrl, expiresInMinutes = 60 });
+    }
+
+    // ── Audit Log Viewer ─────────────────────────────────────────────
+
+    [HttpGet("audit-logs")]
+    public async Task<IActionResult> GetAuditLogs(
+        [FromQuery] string? actorEmail,
+        [FromQuery] string? action,
+        [FromQuery] DateTime? from,
+        [FromQuery] DateTime? to,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 50)
+    {
+        pageSize = Math.Clamp(pageSize, 1, 200);
+        var query = _db.AuditLogs.AsNoTracking().AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(actorEmail))
+            query = query.Where(l => l.ActorEmail != null && l.ActorEmail.Contains(actorEmail));
+        if (!string.IsNullOrWhiteSpace(action))
+            query = query.Where(l => l.Action.Contains(action));
+        if (from.HasValue)
+            query = query.Where(l => l.Timestamp >= from.Value);
+        if (to.HasValue)
+            query = query.Where(l => l.Timestamp <= to.Value);
+
+        var total = await query.CountAsync();
+        var logs  = await query
+            .OrderByDescending(l => l.Timestamp)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync();
+
+        return Ok(new
+        {
+            total,
+            page,
+            pageSize,
+            items = logs.Select(l => new
+            {
+                id           = l.Id,
+                actorEmail   = l.ActorEmail,
+                actorUserId  = l.ActorUserId,
+                action       = l.Action,
+                targetEntity = l.TargetEntity,
+                details      = l.Details,
+                ipAddress    = l.IpAddress,
+                resultCode   = l.ResultCode,
+                timestamp    = l.Timestamp,
+            })
+        });
     }
 
     public record RejectDocumentRequest(string Reason);

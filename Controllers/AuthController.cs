@@ -2,10 +2,12 @@ using Beauty.Api.Authorization;
 using Beauty.Api.Data;
 using Beauty.Api.Email;
 using Beauty.Api.Models;
+using Beauty.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.Data;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
@@ -17,23 +19,27 @@ namespace Beauty.Api.Controllers;
 
 [ApiController]
 [Route("auth")]
+[EnableRateLimiting("auth")]
 public sealed class AuthController : ControllerBase
 {
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly SignInManager<ApplicationUser> _signInManager;
     private readonly IConfiguration _config;
     private readonly BeautyDbContext _db;
+    private readonly AuditService _audit;
 
     public AuthController(
         UserManager<ApplicationUser> userManager,
         SignInManager<ApplicationUser> signInManager,
         IConfiguration config,
-        BeautyDbContext db)
+        BeautyDbContext db,
+        AuditService audit)
     {
         _userManager = userManager;
         _signInManager = signInManager;
         _config = config;
         _db = db;
+        _audit = audit;
     }
 
     // ✅ REGISTER (creates Pending account, triggers approval flow)
@@ -64,6 +70,12 @@ public sealed class AuthController : ControllerBase
             return BadRequest(new { code = "VALIDATION_ERROR", errors = result.Errors.Select(e => e.Description) });
 
         await _userManager.AddToRoleAsync(user, req.Role);
+
+        await _audit.LogAsync(user.Id, "Auth.Register",
+            targetEntity: $"User/{user.Id}",
+            details: $"Role={req.Role}",
+            actorEmail: user.Email,
+            resultCode: 200);
 
         // Notify applicant
         _ = emailSvc.SendApplicationReceivedAsync(req.Email, req.Role).ContinueWith(_ => { });
@@ -98,18 +110,30 @@ public sealed class AuthController : ControllerBase
         );
 
         if (result.IsLockedOut)
+        {
+            await _audit.LogAsync(user.Id, "Auth.LockedOut",
+                targetEntity: $"User/{user.Id}", actorEmail: user.Email, resultCode: 401);
             return Unauthorized(new { code = "LOCKED_OUT" });
+        }
 
         if (result.RequiresTwoFactor)
             return Ok(new { requiresMfa = true });
 
         if (!result.Succeeded)
+        {
+            await _audit.LogAsync(user.Id, "Auth.LoginFailed",
+                targetEntity: $"User/{user.Id}", actorEmail: user.Email, resultCode: 401);
             return Unauthorized(new { code = "INVALID_CREDENTIALS" });
+        }
 
         // Build extra claims: tenant_id + permissions
         var extraClaims = await BuildExtraClaimsAsync(user);
 
         await _signInManager.SignInWithClaimsAsync(user, isPersistent: true, extraClaims);
+
+        await _audit.LogAsync(user.Id, "Auth.LoginSuccess",
+            targetEntity: $"User/{user.Id}", actorEmail: user.Email, resultCode: 200);
+
         return Ok(new { success = true });
     }
 

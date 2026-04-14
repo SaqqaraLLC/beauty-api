@@ -5,11 +5,13 @@ using Beauty.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 
 namespace Beauty.Api.Controllers;
 
+[EnableRateLimiting("general")]
 [ApiController]
 [Route("api/company-bookings")]
 [Authorize]
