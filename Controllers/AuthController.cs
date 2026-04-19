@@ -27,19 +27,22 @@ public sealed class AuthController : ControllerBase
     private readonly IConfiguration _config;
     private readonly BeautyDbContext _db;
     private readonly AuditService _audit;
+    private readonly ILogger<AuthController> _logger;
 
     public AuthController(
         UserManager<ApplicationUser> userManager,
         SignInManager<ApplicationUser> signInManager,
         IConfiguration config,
         BeautyDbContext db,
-        AuditService audit)
+        AuditService audit,
+        ILogger<AuthController> logger)
     {
         _userManager = userManager;
         _signInManager = signInManager;
         _config = config;
         _db = db;
         _audit = audit;
+        _logger = logger;
     }
 
     // ✅ REGISTER (creates Pending account, triggers approval flow)
@@ -283,22 +286,27 @@ public sealed class AuthController : ControllerBase
         }
 
         // 2. Enterprise tenant + enterprise role permissions
-        //    EnterpriseUser.UserId links back to ApplicationUser.Id
-        //    Use IgnoreQueryFilters so platform users can also load this if needed
-        var enterpriseUser = await _db.EnterpriseUsers
-            .Include(eu => eu.Role)
-            .IgnoreQueryFilters()
-            .FirstOrDefaultAsync(eu => eu.UserId == user.Id && !eu.IsDeleted);
-
-        if (enterpriseUser != null)
+        try
         {
-            claims.Add(new Claim("tenant_id", enterpriseUser.EnterpriseAccountId.ToString()));
+            var enterpriseUser = await _db.EnterpriseUsers
+                .Include(eu => eu.Role)
+                .IgnoreQueryFilters()
+                .FirstOrDefaultAsync(eu => eu.UserId == user.Id && !eu.IsDeleted);
 
-            if (enterpriseUser.Role != null &&
-                PermissionMatrix.ByRole.TryGetValue(enterpriseUser.Role.Name, out var entPerms))
+            if (enterpriseUser != null)
             {
-                claims.AddRange(entPerms.Select(p => new Claim("permission", p)));
+                claims.Add(new Claim("tenant_id", enterpriseUser.EnterpriseAccountId.ToString()));
+
+                if (enterpriseUser.Role != null &&
+                    PermissionMatrix.ByRole.TryGetValue(enterpriseUser.Role.Name, out var entPerms))
+                {
+                    claims.AddRange(entPerms.Select(p => new Claim("permission", p)));
+                }
             }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to load enterprise claims for user {UserId}", user.Id);
         }
 
         // Deduplicate — same permission may come from both platform role and enterprise role
