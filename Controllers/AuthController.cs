@@ -98,8 +98,6 @@ public sealed class AuthController : ControllerBase
     [AllowAnonymous]
     public async Task<IActionResult> Login([FromBody] LoginDto req)
     {
-        try
-        {
         var user = await _userManager.FindByEmailAsync(req.Email);
         if (user == null)
             return Unauthorized(new { code = "INVALID_CREDENTIALS" });
@@ -148,12 +146,6 @@ public sealed class AuthController : ControllerBase
             targetEntity: $"User/{user.Id}", actorEmail: user.Email, resultCode: 200);
 
         return Ok(new { success = true });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Login endpoint threw for {Email}", req.Email);
-            return StatusCode(500, new { code = "LOGIN_ERROR", message = ex.Message, type = ex.GetType().Name });
-        }
     }
 
 
