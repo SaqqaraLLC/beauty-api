@@ -4,6 +4,7 @@ using Beauty.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Beauty.Api.Migrations
 {
     [DbContext(typeof(BeautyDbContext))]
-    partial class BeautyDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260419060408_AddWorldpayPayments")]
+    partial class AddWorldpayPayments
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1803,124 +1806,6 @@ namespace Beauty.Api.Migrations
                     b.ToTable("WpPaymentRefunds");
                 });
 
-            modelBuilder.Entity("Beauty.Api.Models.Payouts.PayoutCycle", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<long>("Id"));
-
-                    b.Property<DateTime?>("ApprovedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("ApprovedByEmail")
-                        .HasMaxLength(256)
-                        .HasColumnType("varchar(256)");
-
-                    b.Property<string>("ApprovedByUserId")
-                        .HasMaxLength(450)
-                        .HasColumnType("varchar(450)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<DateTime?>("DisbursedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("Notes")
-                        .HasMaxLength(1000)
-                        .HasColumnType("varchar(1000)");
-
-                    b.Property<DateTime>("PeriodEnd")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<DateTime>("PeriodStart")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("varchar(30)");
-
-                    b.Property<long>("TotalInvoiceAmountCents")
-                        .HasColumnType("bigint");
-
-                    b.Property<long>("TotalPlatformAmountCents")
-                        .HasColumnType("bigint");
-
-                    b.Property<long>("TotalProviderAmountCents")
-                        .HasColumnType("bigint");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("PeriodStart");
-
-                    b.HasIndex("Status");
-
-                    b.ToTable("PayoutCycles");
-                });
-
-            modelBuilder.Entity("Beauty.Api.Models.Payouts.ProviderPayoutLine", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<long>("Id"));
-
-                    b.Property<long>("AmountCents")
-                        .HasColumnType("bigint");
-
-                    b.Property<long?>("BookingId")
-                        .HasColumnType("bigint");
-
-                    b.Property<long>("CycleId")
-                        .HasColumnType("bigint");
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(500)
-                        .HasColumnType("varchar(500)");
-
-                    b.Property<long?>("InvoiceId")
-                        .HasColumnType("bigint");
-
-                    b.Property<string>("Notes")
-                        .HasMaxLength(500)
-                        .HasColumnType("varchar(500)");
-
-                    b.Property<string>("ProviderEmail")
-                        .HasMaxLength(256)
-                        .HasColumnType("varchar(256)");
-
-                    b.Property<string>("ProviderName")
-                        .HasMaxLength(200)
-                        .HasColumnType("varchar(200)");
-
-                    b.Property<string>("ProviderRole")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("varchar(50)");
-
-                    b.Property<string>("ProviderUserId")
-                        .IsRequired()
-                        .HasMaxLength(450)
-                        .HasColumnType("varchar(450)");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("varchar(20)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CycleId");
-
-                    b.HasIndex("ProviderUserId");
-
-                    b.ToTable("ProviderPayoutLines");
-                });
-
             modelBuilder.Entity("Beauty.Api.Models.Service", b =>
                 {
                     b.Property<long>("Id")
@@ -2486,17 +2371,6 @@ namespace Beauty.Api.Migrations
                     b.Navigation("Payment");
                 });
 
-            modelBuilder.Entity("Beauty.Api.Models.Payouts.ProviderPayoutLine", b =>
-                {
-                    b.HasOne("Beauty.Api.Models.Payouts.PayoutCycle", "Cycle")
-                        .WithMany("Lines")
-                        .HasForeignKey("CycleId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Cycle");
-                });
-
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>
                 {
                     b.HasOne("Microsoft.AspNetCore.Identity.IdentityRole", null)
@@ -2583,11 +2457,6 @@ namespace Beauty.Api.Migrations
                     b.Navigation("AuditLogs");
 
                     b.Navigation("Refunds");
-                });
-
-            modelBuilder.Entity("Beauty.Api.Models.Payouts.PayoutCycle", b =>
-                {
-                    b.Navigation("Lines");
                 });
 #pragma warning restore 612, 618
         }

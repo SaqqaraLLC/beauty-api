@@ -240,6 +240,10 @@ builder.Services.AddScoped<EmailTemplateService>();
 builder.Services.AddScoped<ContractGeneratorService>();
 builder.Services.AddScoped<InvoiceGeneratorService>();
 
+// Worldpay
+builder.Services.AddHttpClient();
+builder.Services.AddScoped<IWorldpayService, WorldpayService>();
+
 // Controllers & Swagger
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();

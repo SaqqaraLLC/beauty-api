@@ -4,6 +4,8 @@ using Beauty.Api.Models.Catalog;
 using Beauty.Api.Models.Company;
 using Beauty.Api.Models.Enterprise;
 using Beauty.Api.Models.Locations;
+using Beauty.Api.Models.Payments;
+using Beauty.Api.Models.Payouts;
 using Beauty.Api.Services;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
@@ -56,6 +58,15 @@ public class BeautyDbContext
     public DbSet<Product>       Products       => Set<Product>();
     public DbSet<ProductReview> ProductReviews => Set<ProductReview>();
     public DbSet<PromoCode>     PromoCodes     => Set<PromoCode>();
+
+    // ── Worldpay payments ─────────────────────────────────────────
+    public DbSet<WpPayment>         WpPayments         => Set<WpPayment>();
+    public DbSet<WpPaymentRefund>   WpPaymentRefunds   => Set<WpPaymentRefund>();
+    public DbSet<WpPaymentAuditLog> WpPaymentAuditLogs => Set<WpPaymentAuditLog>();
+
+    // ── Payouts ───────────────────────────────────────────────────
+    public DbSet<PayoutCycle>       PayoutCycles       => Set<PayoutCycle>();
+    public DbSet<ProviderPayoutLine> ProviderPayoutLines => Set<ProviderPayoutLine>();
 
     // ── Documents ─────────────────────────────────────────────────
     public DbSet<UserDocument> UserDocuments => Set<UserDocument>();
@@ -618,6 +629,85 @@ public class BeautyDbContext
 
             entity.HasIndex(x => x.ProductId);
             entity.HasIndex(x => x.ReviewerUserId);
+        });
+
+        // ── WpPayment ─────────────────────────────────────────────
+        builder.Entity<WpPayment>(entity =>
+        {
+            entity.HasKey(x => x.PaymentId);
+            entity.Property(x => x.WorldpayTransactionId).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.PayerEmail).HasMaxLength(255).IsRequired();
+            entity.Property(x => x.CurrencyCode).HasMaxLength(3);
+            entity.Property(x => x.Description).HasMaxLength(500);
+            entity.Property(x => x.ResponseCode).HasMaxLength(50);
+            entity.Property(x => x.CardLast4).HasMaxLength(4);
+            entity.Property(x => x.CardBrand).HasMaxLength(50);
+            entity.Property(x => x.PaymentTokenId).HasMaxLength(255);
+            entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
+
+            entity.HasMany(x => x.Refunds)
+                .WithOne(x => x.Payment)
+                .HasForeignKey(x => x.PaymentId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasMany(x => x.AuditLogs)
+                .WithOne(x => x.Payment)
+                .HasForeignKey(x => x.PaymentId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(x => x.WorldpayTransactionId).IsUnique();
+            entity.HasIndex(x => x.Status);
+        });
+
+        builder.Entity<WpPaymentRefund>(entity =>
+        {
+            entity.HasKey(x => x.RefundId);
+            entity.Property(x => x.WorldpayRefundId).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.Reason).HasMaxLength(500);
+            entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
+            entity.HasIndex(x => x.WorldpayRefundId).IsUnique();
+        });
+
+        builder.Entity<WpPaymentAuditLog>(entity =>
+        {
+            entity.HasKey(x => x.LogId);
+            entity.Property(x => x.Details).HasMaxLength(500);
+            entity.Property(x => x.Action).HasConversion<string>().HasMaxLength(30);
+            entity.HasIndex(x => x.PaymentId);
+            entity.HasIndex(x => x.Timestamp);
+        });
+
+        // ── PayoutCycle ───────────────────────────────────────────
+        builder.Entity<PayoutCycle>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(30);
+            entity.Property(x => x.ApprovedByUserId).HasMaxLength(450);
+            entity.Property(x => x.ApprovedByEmail).HasMaxLength(256);
+            entity.Property(x => x.Notes).HasMaxLength(1000);
+
+            entity.HasMany(x => x.Lines)
+                .WithOne(x => x.Cycle)
+                .HasForeignKey(x => x.CycleId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(x => x.Status);
+            entity.HasIndex(x => x.PeriodStart);
+        });
+
+        builder.Entity<ProviderPayoutLine>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.ProviderUserId).HasMaxLength(450).IsRequired();
+            entity.Property(x => x.ProviderEmail).HasMaxLength(256);
+            entity.Property(x => x.ProviderName).HasMaxLength(200);
+            entity.Property(x => x.ProviderRole).HasMaxLength(50);
+            entity.Property(x => x.Description).HasMaxLength(500);
+            entity.Property(x => x.Notes).HasMaxLength(500);
+            entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
+
+            entity.HasIndex(x => x.CycleId);
+            entity.HasIndex(x => x.ProviderUserId);
         });
     }
 }

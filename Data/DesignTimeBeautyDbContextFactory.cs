@@ -27,8 +27,8 @@ public sealed class DesignTimeBeautyDbContextFactory
             .Build();
 
         var connectionString =
-            configuration.GetConnectionString("DefaultConnection")
-            ?? throw new InvalidOperationException("Missing connection string 'DefaultConnection'.");
+            configuration.GetConnectionString("BeautyDb")
+            ?? throw new InvalidOperationException("Missing connection string 'BeautyDb'.");
 
         var options = new DbContextOptionsBuilder<BeautyDbContext>()
             .UseMySql(connectionString, new MySqlServerVersion(new Version(8, 0, 34)))

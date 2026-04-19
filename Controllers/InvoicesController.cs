@@ -262,6 +262,68 @@ public class InvoicesController : ControllerBase
         return Ok(new { invoiceId = id, status = "Void" });
     }
 
+    // ── POST /api/invoices/{id}/pay ───────────────────────────────
+    [HttpPost("{id:long}/pay")]
+    public async Task<IActionResult> Pay(
+        long id,
+        [FromBody] PayInvoiceRequest req,
+        [FromServices] IWorldpayService worldpay)
+    {
+        var invoice = await _db.Invoices
+            .Include(i => i.LineItems)
+            .Include(i => i.Company)
+            .FirstOrDefaultAsync(i => i.Id == id);
+
+        if (invoice == null) return NotFound();
+
+        if (invoice.Status == InvoiceStatus.Paid)
+            return BadRequest(new { code = "ALREADY_PAID" });
+        if (invoice.Status == InvoiceStatus.Void)
+            return BadRequest(new { code = "INVOICE_VOID" });
+
+        // Company users can only pay their own invoices
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier)!;
+        if (!User.IsInRole("Admin"))
+        {
+            var company = await _db.CompanyProfiles.FirstOrDefaultAsync(c => c.UserId == userId);
+            if (company == null || company.Id != invoice.CompanyId)
+                return Forbid();
+        }
+
+        var totalCents = invoice.LineItems.Sum(l => l.TotalCents);
+
+        var result = await worldpay.ChargeAsync(new Services.PaymentRequest(
+            BookingId:          invoice.CompanyBookingId,
+            RecipientUserId:    invoice.IssuedByUserId,
+            PayerEmail:         req.Email,
+            PayerName:          req.CardholderName,
+            CardNumber:         req.CardNumber,
+            CardExpiry:         req.CardExpiry,
+            CardCvc:            req.CardCvc,
+            CardholderName:     req.CardholderName,
+            CardBrand:          req.CardBrand,
+            AmountCents:        totalCents,
+            CurrencyCode:       "USD",
+            Description:        $"Invoice {invoice.InvoiceNumber}",
+            CustomerIpAddress:  HttpContext.Connection.RemoteIpAddress?.ToString()
+        ));
+
+        if (!result.Success)
+            return BadRequest(new { code = "PAYMENT_FAILED", error = result.Error });
+
+        invoice.Status = InvoiceStatus.Paid;
+        invoice.PaidAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        return Ok(new
+        {
+            paymentId     = result.PaymentId,
+            invoiceNumber = invoice.InvoiceNumber,
+            amountCents   = totalCents,
+            status        = "Paid"
+        });
+    }
+
     // ── Helpers ───────────────────────────────────────────────────
     private bool CanAccess(Invoice invoice)
     {
@@ -292,5 +354,14 @@ public class InvoicesController : ControllerBase
         int Quantity,
         int UnitPriceCents,
         decimal? DiscountPercent
+    );
+
+    public record PayInvoiceRequest(
+        string  Email,
+        string  CardNumber,
+        string  CardExpiry,
+        string  CardCvc,
+        string  CardholderName,
+        string? CardBrand
     );
 }
