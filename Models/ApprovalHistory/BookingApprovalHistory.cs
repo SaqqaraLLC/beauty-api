@@ -7,7 +7,7 @@ public class BookingApprovalHistory
     public long Id { get; set; }
 
     public long BookingId { get; set; }
-    public Booking Booking { get; set; }
+    public Booking Booking { get; set; } = null!;
 
     // Artist, Location, Director
     public ApprovalStage Stage { get; set; }
@@ -18,9 +18,9 @@ public class BookingApprovalHistory
     public DateTime ActionAt { get; set; }
 
     // Who did it
-    public string PerformedByUserId { get; set; }
-    public string PerformedByEmail { get; set; }
-    public string PerformedByRole { get; set; }
+    public required string PerformedByUserId { get; set; }
+    public required string PerformedByEmail { get; set; }
+    public required string PerformedByRole { get; set; }
 
     // Optional but powerful
     public string? Comment { get; set; }

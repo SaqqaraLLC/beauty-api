@@ -164,21 +164,20 @@ public sealed class AuthController : ControllerBase
     public async Task<IActionResult> SetupMfa()
     {
         var user = await _userManager.GetUserAsync(User);
+        if (user == null) return Unauthorized();
 
-        
-var key = await _userManager.GetAuthenticatorKeyAsync(user);
+        var key = await _userManager.GetAuthenticatorKeyAsync(user);
 
-if (string.IsNullOrEmpty(key))
-{
-    await _userManager.ResetAuthenticatorKeyAsync(user);
-    key = await _userManager.GetAuthenticatorKeyAsync(user);
-}
-
+        if (string.IsNullOrEmpty(key))
+        {
+            await _userManager.ResetAuthenticatorKeyAsync(user);
+            key = await _userManager.GetAuthenticatorKeyAsync(user);
+        }
 
         return Ok(new
         {
             sharedKey = key,
-            qrCodeUri = GenerateQrCodeUri(user.Email!, key)
+            qrCodeUri = GenerateQrCodeUri(user.Email!, key!)
         });
     }
 
