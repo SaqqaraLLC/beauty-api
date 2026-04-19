@@ -132,7 +132,15 @@ public sealed class AuthController : ControllerBase
         // Build extra claims: tenant_id + permissions
         var extraClaims = await BuildExtraClaimsAsync(user);
 
-        await _signInManager.SignInWithClaimsAsync(user, isPersistent: true, extraClaims);
+        try
+        {
+            await _signInManager.SignInWithClaimsAsync(user, isPersistent: true, extraClaims);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "SignInWithClaimsAsync failed for user {UserId}", user.Id);
+            return StatusCode(500, new { code = "SIGN_IN_ERROR", message = ex.Message });
+        }
 
         await _audit.LogAsync(user.Id, "Auth.LoginSuccess",
             targetEntity: $"User/{user.Id}", actorEmail: user.Email, resultCode: 200);
