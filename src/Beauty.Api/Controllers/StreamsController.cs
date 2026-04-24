@@ -156,6 +156,62 @@ public class ArtistProfileController : ControllerBase
         return Ok(result);
     }
 
+    // -----------------------------------------------
+    // Travel preferences
+    // -----------------------------------------------
+
+    public record TravelRequest(
+        bool? TravelNationwide,   // true = anywhere in the US; false/null = use MaxMiles
+        int?  MaxMiles);          // 1–5000; required when TravelNationwide is false/null
+
+    /// <summary>
+    /// Get artist's travel preferences (public)
+    /// </summary>
+    [HttpGet("{artistId:long}/travel")]
+    public async Task<IActionResult> GetTravel(long artistId)
+    {
+        var artist = await _db.Artists.AsNoTracking()
+            .FirstOrDefaultAsync(a => a.ArtistId == artistId);
+
+        if (artist == null)
+            return NotFound(new { error = "Artist not found" });
+
+        return Ok(new
+        {
+            travelNationwide = artist.TravelNationwide,
+            travelMaxMiles   = artist.TravelMaxMiles
+        });
+    }
+
+    /// <summary>
+    /// Update artist's travel preferences (artist only)
+    /// </summary>
+    [HttpPut("{artistId:long}/travel")]
+    [Authorize(Roles = "Artist")]
+    public async Task<IActionResult> UpdateTravel(long artistId, [FromBody] TravelRequest request)
+    {
+        if (request.TravelNationwide != true && (request.MaxMiles == null || request.MaxMiles < 1 || request.MaxMiles > 5000))
+            return BadRequest(new { error = "Provide MaxMiles between 1 and 5000, or set TravelNationwide to true." });
+
+        var artist = await _db.Artists.FirstOrDefaultAsync(a => a.ArtistId == artistId);
+        if (artist == null)
+            return NotFound(new { error = "Artist not found" });
+
+        artist.TravelNationwide = request.TravelNationwide ?? false;
+        artist.TravelMaxMiles   = request.TravelNationwide == true ? null : request.MaxMiles;
+
+        await _db.SaveChangesAsync();
+
+        _logger.LogInformation("[TRAVEL] Artist {ArtistId} updated travel: nationwide={N} maxMiles={M}",
+            artistId, artist.TravelNationwide, artist.TravelMaxMiles);
+
+        return Ok(new
+        {
+            travelNationwide = artist.TravelNationwide,
+            travelMaxMiles   = artist.TravelMaxMiles
+        });
+    }
+
     /// <summary>
     /// Get stream details (public view)
     /// Excludes flagged/deleted streams unless user is admin

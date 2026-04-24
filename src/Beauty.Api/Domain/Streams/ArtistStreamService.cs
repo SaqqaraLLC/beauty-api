@@ -156,7 +156,9 @@ public sealed class ArtistStreamService : IArtistStreamService
             artist.ProfileImageUrl,
             streams,
             totalStreams,
-            totalViews
+            totalViews,
+            artist.TravelNationwide,
+            artist.TravelMaxMiles
         );
     }
 
@@ -376,7 +378,9 @@ public record ArtistProfileDto(
     string? ProfileImageUrl,
     List<StreamDto> RecentStreams,
     long TotalStreams,
-    long TotalViews);
+    long TotalViews,
+    bool? TravelNationwide,
+    int?  TravelMaxMiles);
 
 public record StreamBrowseDto(
     long StreamId,

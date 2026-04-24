@@ -15,4 +15,8 @@ public class Artist
     public string? ProfileImageUrl { get; set; }
     
     public bool Active { get; set; } = true;
+
+    // Travel preferences — null means not set
+    public bool? TravelNationwide { get; set; }      // true = will travel anywhere in the US
+    public int?  TravelMaxMiles   { get; set; }      // max miles willing to travel (ignored when TravelNationwide = true)
 }
