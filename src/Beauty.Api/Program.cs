@@ -165,8 +165,9 @@ builder.Services.AddScoped<UserApprovalService>();
 // Broadcasting
 builder.Services.AddScoped<IBroadcastService, BroadcastService>();
 
-// Payments (Worldpay)
+// Payments (Authvia via CyberSource)
 builder.Services.AddHttpClient();
+builder.Services.AddMemoryCache();
 builder.Services.AddScoped<IWorldpayService, WorldpayService>();
 
 // Streams (Artist profiles & dangerous content detection)
