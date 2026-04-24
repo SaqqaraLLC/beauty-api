@@ -191,18 +191,20 @@ public class PaymentsController : ControllerBase
         Request.Body.Position = 0;
 
         // ── 1. Signature verification ────────────────────────────────────────────
-        var signatureHeader =
-            Request.Headers.TryGetValue("X-Authvia-Signature",  out var sig1) ? sig1.ToString() :
-            Request.Headers.TryGetValue("X-Worldpay-Signature", out var sig2) ? sig2.ToString() :
-            null;
+        // Authvia sends: X-AUTHVIA-VALUE, X-AUTHVIA-TIMESTAMP, X-AUTHVIA-SIGNATURE
+        // Signature = Base64(HMAC-SHA256("{value}.{value.Length}.{timestamp}", secret))
+        Request.Headers.TryGetValue("X-AUTHVIA-VALUE",     out var authhviaValueHeader);
+        Request.Headers.TryGetValue("X-AUTHVIA-TIMESTAMP", out var authhviaTimestampHeader);
+        Request.Headers.TryGetValue("X-AUTHVIA-SIGNATURE", out var authhviaSignatureHeader);
 
-        if (string.IsNullOrEmpty(signatureHeader))
-        {
-            _logger.LogWarning("[WEBHOOK] Missing signature header");
-            return Unauthorized(new { error = "Missing signature" });
-        }
+        var authhviaValue     = authhviaValueHeader.ToString();
+        var authhviaTimestamp = authhviaTimestampHeader.ToString();
+        var authhviaSignature = authhviaSignatureHeader.ToString();
 
-        if (!_worldpayService.ValidateWebhookSignature(body, signatureHeader))
+        if (!_worldpayService.ValidateWebhookSignature(
+                string.IsNullOrEmpty(authhviaValue)     ? null : authhviaValue,
+                string.IsNullOrEmpty(authhviaTimestamp) ? null : authhviaTimestamp,
+                string.IsNullOrEmpty(authhviaSignature) ? null : authhviaSignature))
         {
             _logger.LogWarning("[WEBHOOK] Signature validation failed");
             return Unauthorized(new { error = "Invalid signature" });
@@ -366,11 +368,14 @@ public class PaymentsController : ControllerBase
     }
 
     // ── Translation layer — map Authvia's names to our internal model ─────────────
-    // When Authvia support confirms the exact type strings, add them here.
+    // Authvia calls payment requests "conversations":
+    //   conversations.create  = new charge submitted
+    //   conversations.update  = status changed (captured/declined/refunded/etc.)
 
     private static string NormalizeEventType(string raw) => raw.ToLowerInvariant() switch
     {
-        "transaction.created"                                            => "transaction.created",
+        "transaction.created"     or "conversations.create"
+            or "conversation.created"                                    => "transaction.created",
         "transaction.authorized"  or "payment.authorized"
             or "payment_authorized"                                      => "transaction.authorized",
         "transaction.declined"    or "payment.declined"
@@ -387,7 +392,8 @@ public class PaymentsController : ControllerBase
             or "payment.reversal"                                        => "transaction.reversed",
         "transaction.chargeback"  or "dispute.created"                  => "transaction.chargeback",
         "transaction.updated"     or "payment.updated"
-            or "transactions.update"                                     => "transaction.updated",
+            or "transactions.update" or "conversations.update"
+            or "conversation.updated"                                    => "transaction.updated",
         _                                                                => raw.ToLowerInvariant()
     };
 

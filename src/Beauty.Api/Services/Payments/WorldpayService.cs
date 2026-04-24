@@ -30,7 +30,7 @@ public interface IWorldpayService
     Task<PaymentResult> ChargeAsync(PaymentRequest request);
     Task<RefundResult> RefundAsync(long paymentId, string authviaCustomerRef);
     Task<Payment?> GetPaymentAsync(long paymentId);
-    bool ValidateWebhookSignature(string payload, string signature);
+    bool ValidateWebhookSignature(string? authhviaValue, string? timestamp, string? signature);
 }
 
 public sealed class WorldpayService : IWorldpayService
@@ -412,23 +412,33 @@ public sealed class WorldpayService : IWorldpayService
     // Webhook signature validation
     // ------------------------------------------------------------------
 
-    public bool ValidateWebhookSignature(string payload, string signature)
+    // Authvia signature algorithm (from their docs):
+    //   Input : "{X-AUTHVIA-VALUE}.{X-AUTHVIA-VALUE.Length}.{X-AUTHVIA-TIMESTAMP}"
+    //   Key   : UTF-8 bytes of subscription secret
+    //   Output: Base64 HMAC-SHA256  (same algorithm used for API token generation)
+    //
+    // Returns true when secret is not yet configured — allows Authvia's registration
+    // validation ping to succeed before the secret is stored in App Settings.
+    public bool ValidateWebhookSignature(string? authhviaValue, string? timestamp, string? signature)
     {
         var webhookSecret = _config["AUTHVIA_WEBHOOK_SECRET"];
         if (string.IsNullOrEmpty(webhookSecret))
         {
-            _logger.LogWarning("[AUTHVIA] AUTHVIA_WEBHOOK_SECRET not configured — rejecting webhook");
+            _logger.LogWarning("[AUTHVIA] AUTHVIA_WEBHOOK_SECRET not configured — allowing webhook (registration ping)");
+            return true;
+        }
+
+        if (string.IsNullOrEmpty(authhviaValue) || string.IsNullOrEmpty(timestamp) || string.IsNullOrEmpty(signature))
+        {
+            _logger.LogWarning("[AUTHVIA] Missing Authvia verification headers");
             return false;
         }
 
+        var sigInput = $"{authhviaValue}.{authhviaValue.Length}.{timestamp}";
         using var hmac  = new HMACSHA256(Encoding.UTF8.GetBytes(webhookSecret));
-        var computedHex = Convert.ToHexString(hmac.ComputeHash(Encoding.UTF8.GetBytes(payload))).ToLowerInvariant();
+        var computed    = Convert.ToBase64String(hmac.ComputeHash(Encoding.UTF8.GetBytes(sigInput)));
 
-        var incoming = signature.StartsWith("sha256=", StringComparison.OrdinalIgnoreCase)
-            ? signature[7..]
-            : signature;
-
-        return computedHex.Equals(incoming.ToLowerInvariant(), StringComparison.Ordinal);
+        return computed.Equals(signature, StringComparison.Ordinal);
     }
 
     // ------------------------------------------------------------------
