@@ -386,7 +386,8 @@ public class PaymentsController : ControllerBase
         "transaction.reversed"    or "payment.reversed"
             or "payment.reversal"                                        => "transaction.reversed",
         "transaction.chargeback"  or "dispute.created"                  => "transaction.chargeback",
-        "transaction.updated"     or "payment.updated"                  => "transaction.updated",
+        "transaction.updated"     or "payment.updated"
+            or "transactions.update"                                     => "transaction.updated",
         _                                                                => raw.ToLowerInvariant()
     };
 
