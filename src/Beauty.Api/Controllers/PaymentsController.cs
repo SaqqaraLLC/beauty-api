@@ -34,15 +34,20 @@ public class PaymentsController : ControllerBase
     // REQUEST MODELS
     // ============================
 
-    // Card data is never sent to our server.
-    // The frontend tokenizes the card via Authvia and sends back the resulting IDs.
+    // Raw card data collected from the frontend form.
+    // PCI note: sandbox only — switch to Authvia web component before production.
     public record ChargeRequest(
         long? BookingId,
         string PayerEmail,
-        string AuthviaCustomerRef,       // customer's ref in Authvia (our user ID used at customer creation)
-        string AuthviaPaymentMethodId,   // tokenized payment method ID from Authvia
-        string? CardLast4,               // display only
-        string? CardBrand,               // display only
+        string? PayerName,
+        string? PayerPhone,        // E.164 format, e.g. +14075551234
+        string NameOnCard,
+        string CardNumber,
+        int ExpirationMonth,       // 1–12, no leading zero
+        int ExpirationYear,        // 4-digit
+        string? StreetAddress,
+        string? ZipCode,
+        string? CardBrand,         // display only
         long AmountCents,
         string? Description);
 
@@ -66,17 +71,21 @@ public class PaymentsController : ControllerBase
             return ValidationProblem(ModelState);
 
         var paymentRequest = new PaymentRequest(
-            BookingId:               request.BookingId,
-            RecipientUserId:         User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value,
-            PayerEmail:              request.PayerEmail,
-            PayerName:               null,
-            AuthviaCustomerRef:      request.AuthviaCustomerRef,
-            AuthviaPaymentMethodId:  request.AuthviaPaymentMethodId,
-            CardLast4:               request.CardLast4,
-            CardBrand:               request.CardBrand,
-            AmountCents:             request.AmountCents,
-            CurrencyCode:            "USD",
-            Description:             request.Description
+            BookingId:        request.BookingId,
+            RecipientUserId:  User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value,
+            PayerEmail:       request.PayerEmail,
+            PayerName:        request.PayerName,
+            PayerPhone:       request.PayerPhone,
+            NameOnCard:       request.NameOnCard,
+            CardNumber:       request.CardNumber,
+            ExpirationMonth:  request.ExpirationMonth,
+            ExpirationYear:   request.ExpirationYear,
+            StreetAddress:    request.StreetAddress,
+            ZipCode:          request.ZipCode,
+            CardBrand:        request.CardBrand,
+            AmountCents:      request.AmountCents,
+            CurrencyCode:     "USD",
+            Description:      request.Description
         );
 
         var result = await _worldpayService.ChargeAsync(paymentRequest);

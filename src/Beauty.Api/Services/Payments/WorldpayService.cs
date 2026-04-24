@@ -13,12 +13,16 @@ using System.Threading.Tasks;
 namespace Beauty.Api.Services.Payments;
 
 // ============================================================
-// Authvia API constants (base: https://api.authvia.com/v3)
-//   Token:       POST /tokens
-//   Merchant:    POST /merchants
-//   Customer:    POST /customers
-//   Transaction: POST /customers/{ref}/transactions
-//   Webhook:     POST /subscriptions
+// Authvia API (https://api.authvia.com/v3)
+//
+// Flow for a charge:
+//   1. POST /tokens                               → bearer token
+//   2. POST /customers                            → create/ensure customer (ref = our userId)
+//   3. POST /customers/{ref}/payment-methods      → tokenize card → paymentMethod.id
+//   4. POST /customers/{ref}/transactions         → CHARGE with paymentMethod.id → 202 PROCESSING
+//
+// PCI note: raw card data accepted in sandbox.
+// Production: switch to Authvia web component / capture experience.
 // ============================================================
 
 public interface IWorldpayService
@@ -55,15 +59,7 @@ public sealed class WorldpayService : IWorldpayService
     }
 
     // ------------------------------------------------------------------
-    // Authvia token — custom HMAC-SHA256 signed request (not OAuth2)
-    //
-    // Endpoint: POST https://api.authvia.com/v3/tokens
-    //
-    // Signature algorithm (server-side only):
-    //   1. Generate random signature_value (≥32 chars; 64 recommended)
-    //   2. timestamp = current UTC epoch seconds
-    //   3. input = "{signature_value}.{signature_value.Length}.{timestamp}"
-    //   4. signature = HMAC-SHA256(input, AUTHVIA_SECRET_KEY) → lowercase hex
+    // Base URL
     // ------------------------------------------------------------------
 
     private string GetBaseUrl()
@@ -74,26 +70,32 @@ public sealed class WorldpayService : IWorldpayService
         var isSandbox = (_config["AUTHVIA_ENVIRONMENT"] ?? "production")
             .Equals("sandbox", StringComparison.OrdinalIgnoreCase);
 
-        return isSandbox
-            ? "https://sandbox.authvia.com/v3"
-            : "https://api.authvia.com/v3";
+        return isSandbox ? "https://sandbox.authvia.com/v3" : "https://api.authvia.com/v3";
     }
+
+    // ------------------------------------------------------------------
+    // Token — Authvia HMAC-SHA256 signed request
+    // Key  : UTF-8 bytes of the raw secret string
+    // Input: "{sigValue}.{sigValue.Length}.{timestamp}"
+    // Output: Base64 (with padding)
+    // ------------------------------------------------------------------
 
     private async Task<string> GetBearerTokenAsync()
     {
         if (_cache.TryGetValue(TOKEN_CACHE_KEY, out string? cached) && !string.IsNullOrEmpty(cached))
             return cached;
 
-        var clientId  = _config["AUTHVIA_CLIENT_ID"]  ?? throw new InvalidOperationException("AUTHVIA_CLIENT_ID not configured");
-        var secretKey = _config["AUTHVIA_SECRET_KEY"] ?? throw new InvalidOperationException("AUTHVIA_SECRET_KEY not configured");
+        var clientId   = _config["AUTHVIA_CLIENT_ID"]  ?? throw new InvalidOperationException("AUTHVIA_CLIENT_ID not configured");
+        var secretKey  = _config["AUTHVIA_SECRET_KEY"] ?? throw new InvalidOperationException("AUTHVIA_SECRET_KEY not configured");
         var expiryMins = int.TryParse(_config["AUTHVIA_TOKEN_EXPIRY_MINUTES"], out var m) ? m : 30;
+        var tokenUrl   = !string.IsNullOrEmpty(_config["AUTHVIA_TOKEN_URL"])
+            ? _config["AUTHVIA_TOKEN_URL"]!
+            : $"{GetBaseUrl()}/tokens";
 
-        // 64-character random string (Authvia recommends ≥64 chars)
-        var signatureValue = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
-        var timestamp      = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        var sigInput       = $"{signatureValue}.{signatureValue.Length}.{timestamp}";
+        var sigValue  = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
+        var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var sigInput  = $"{sigValue}.{sigValue.Length}.{timestamp}";
 
-        // Key = UTF-8 bytes of the raw secret string; output = Base64 (confirmed working)
         using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(secretKey));
         var signature  = Convert.ToBase64String(hmac.ComputeHash(Encoding.UTF8.GetBytes(sigInput)));
 
@@ -103,13 +105,8 @@ public sealed class WorldpayService : IWorldpayService
             audience        = "api.authvia.com/v3",
             timestamp       = timestamp,
             signature       = signature,
-            signature_value = signatureValue
+            signature_value = sigValue
         };
-
-        // Use explicitly configured token URL if present; otherwise derive from base URL
-        var tokenUrl = !string.IsNullOrEmpty(_config["AUTHVIA_TOKEN_URL"])
-            ? _config["AUTHVIA_TOKEN_URL"]!
-            : $"{GetBaseUrl()}/tokens";
 
         var client   = _httpClientFactory.CreateClient();
         var response = await client.PostAsync(tokenUrl, Serialize(body));
@@ -125,7 +122,7 @@ public sealed class WorldpayService : IWorldpayService
         using var doc = JsonDocument.Parse(json);
         var root      = doc.RootElement;
 
-        // Authvia returns { "type": "Bearer", "token": "eyJ..." }
+        // Response: { "type": "Bearer", "token": "eyJ..." }
         var token = root.TryGetProperty("token", out var t) ? t.GetString() : null;
         if (string.IsNullOrEmpty(token))
             throw new InvalidOperationException("Authvia token response did not include token field");
@@ -148,56 +145,144 @@ public sealed class WorldpayService : IWorldpayService
     }
 
     // ------------------------------------------------------------------
-    // ChargeAsync
-    //
-    // Endpoint: POST /customers/{ref}/transactions
-    //   ref     = AuthviaCustomerRef (our customer's Authvia ID)
-    //   action  = "CHARGE"
-    //   amount  = cents (int32)
-    //   paymentMethod.id = tokenized payment method ID (from Authvia, never raw card data)
-    //
-    // Response: 202 Accepted — status is "PROCESSING" (async)
-    // Final result delivered via webhook event
+    // Step 1 — Ensure customer exists in Authvia
+    // POST /customers  { ref, name, addresses: [{type,value}] }
+    // ref = our userId (no spaces). 409 = already exists, continue.
+    // ------------------------------------------------------------------
+
+    private async Task EnsureCustomerAsync(HttpClient client, string customerRef, string payerEmail, string? payerName, string? phone)
+    {
+        var addresses = new System.Collections.Generic.List<object>
+        {
+            new { type = "email", value = payerEmail }
+        };
+
+        if (!string.IsNullOrWhiteSpace(phone))
+            addresses.Add(new { type = "mobilePhone", value = phone });
+
+        var body = new
+        {
+            @ref      = customerRef,
+            name      = payerName ?? payerEmail,
+            addresses = addresses
+        };
+
+        var response = await client.PostAsync($"{GetBaseUrl()}/customers", Serialize(body));
+
+        // 201 = created, 409 = already exists — both are fine
+        if (response.StatusCode == System.Net.HttpStatusCode.Conflict ||
+            response.IsSuccessStatusCode)
+        {
+            _logger.LogInformation("[AUTHVIA] Customer ensured: {Ref}", customerRef);
+            return;
+        }
+
+        var err = await response.Content.ReadAsStringAsync();
+        _logger.LogError("[AUTHVIA] Customer creation failed: {Status} — {Body}", response.StatusCode, err);
+        throw new InvalidOperationException($"Authvia customer creation failed: {response.StatusCode}");
+    }
+
+    // ------------------------------------------------------------------
+    // Step 2 — Create payment method (tokenize card)
+    // POST /customers/{ref}/payment-methods
+    // Returns payment method id used in the transaction
+    // ------------------------------------------------------------------
+
+    private async Task<string> CreatePaymentMethodAsync(
+        HttpClient client,
+        string customerRef,
+        string nameOnCard,
+        string cardNumber,
+        int expirationMonth,
+        int expirationYear,
+        string? streetAddress,
+        string? zipCode)
+    {
+        var body = new
+        {
+            type            = "CreditCard",
+            nameOnCard      = nameOnCard,
+            cardNumber      = cardNumber,
+            expirationMonth = expirationMonth,
+            expirationYear  = expirationYear,
+            streetAddress   = streetAddress,
+            zipCode         = zipCode
+        };
+
+        var url      = $"{GetBaseUrl()}/customers/{Uri.EscapeDataString(customerRef)}/payment-methods";
+        var response = await client.PostAsync(url, Serialize(body));
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var err = await response.Content.ReadAsStringAsync();
+            _logger.LogError("[AUTHVIA] Payment method creation failed: {Status} — {Body}", response.StatusCode, err);
+            throw new InvalidOperationException($"Authvia payment method creation failed: {response.StatusCode}");
+        }
+
+        var json = await response.Content.ReadAsStringAsync();
+        using var doc = JsonDocument.Parse(json);
+
+        var pmId = doc.RootElement.TryGetProperty("id", out var id) ? id.GetString() : null;
+        if (string.IsNullOrEmpty(pmId))
+            throw new InvalidOperationException("Authvia payment method response did not include id");
+
+        _logger.LogInformation("[AUTHVIA] Payment method created: {PmId}", pmId);
+        return pmId;
+    }
+
+    // ------------------------------------------------------------------
+    // ChargeAsync — orchestrates all three steps
     // ------------------------------------------------------------------
 
     public async Task<PaymentResult> ChargeAsync(PaymentRequest request)
     {
         try
         {
-            if (string.IsNullOrEmpty(request.AuthviaCustomerRef))
-                return new PaymentResult(false, 0, null, null, "AuthviaCustomerRef is required", null);
+            var client      = await GetAuthorizedClientAsync();
+            var customerRef = request.RecipientUserId ?? throw new InvalidOperationException("RecipientUserId (customerRef) is required");
 
-            if (string.IsNullOrEmpty(request.AuthviaPaymentMethodId))
-                return new PaymentResult(false, 0, null, null, "AuthviaPaymentMethodId is required — card must be tokenized via Authvia before charging", null);
+            // 1. Ensure customer exists
+            await EnsureCustomerAsync(client, customerRef, request.PayerEmail, request.PayerName, request.PayerPhone);
 
-            var client = await GetAuthorizedClientAsync();
+            // 2. Tokenize card → payment method ID
+            var pmId = await CreatePaymentMethodAsync(
+                client,
+                customerRef,
+                request.NameOnCard,
+                request.CardNumber,
+                request.ExpirationMonth,
+                request.ExpirationYear,
+                request.StreetAddress,
+                request.ZipCode);
 
-            var body = new
+            // 3. Create transaction
+            var txBody = new
             {
                 action        = "CHARGE",
                 amount        = request.AmountCents,
-                paymentMethod = new { id = request.AuthviaPaymentMethodId },
+                paymentMethod = new { id = pmId },
                 references    = request.Description != null
                     ? new[] { new { label = "description", value = request.Description } }
                     : null
             };
 
-            var url      = $"{GetBaseUrl()}/customers/{Uri.EscapeDataString(request.AuthviaCustomerRef)}/transactions";
-            var response = await client.PostAsync(url, Serialize(body));
+            var txUrl      = $"{GetBaseUrl()}/customers/{Uri.EscapeDataString(customerRef)}/transactions";
+            var txResponse = await client.PostAsync(txUrl, Serialize(txBody));
 
-            // 202 = Accepted/Processing; 200 = immediate success
-            if (!response.IsSuccessStatusCode)
+            if (!txResponse.IsSuccessStatusCode)
             {
-                var errBody = await response.Content.ReadAsStringAsync();
-                _logger.LogError("[AUTHVIA] Charge failed: {Status} — {Body}", response.StatusCode, errBody);
-                return new PaymentResult(false, 0, null, null, "Payment declined by processor", response.StatusCode.ToString());
+                var errBody = await txResponse.Content.ReadAsStringAsync();
+                _logger.LogError("[AUTHVIA] Charge failed: {Status} — {Body}", txResponse.StatusCode, errBody);
+                return new PaymentResult(false, 0, null, null, "Payment declined by processor", txResponse.StatusCode.ToString());
             }
 
-            var json = await response.Content.ReadAsStringAsync();
-            using var doc       = JsonDocument.Parse(json);
-            var root            = doc.RootElement;
-            var transactionId   = root.TryGetProperty("id", out var idProp)         ? idProp.GetString()     : null;
-            var rawStatus       = root.TryGetProperty("status", out var statusProp)  ? statusProp.GetString() : "PROCESSING";
+            var txJson = await txResponse.Content.ReadAsStringAsync();
+            using var txDoc     = JsonDocument.Parse(txJson);
+            var txRoot          = txDoc.RootElement;
+            var transactionId   = txRoot.TryGetProperty("id", out var idProp)         ? idProp.GetString()     : null;
+            var rawStatus       = txRoot.TryGetProperty("status", out var statusProp)  ? statusProp.GetString() : "PROCESSING";
+
+            var cardLast4 = request.CardNumber.Length >= 4 ? request.CardNumber[^4..] : null;
 
             var payment = new Payment
             {
@@ -209,11 +294,11 @@ public sealed class WorldpayService : IWorldpayService
                 CurrencyCode          = request.CurrencyCode,
                 Description           = request.Description,
                 Status                = MapAuthviaStatus(rawStatus),
-                CardLast4             = request.CardLast4,
+                CardLast4             = cardLast4,
                 CardBrand             = request.CardBrand,
-                ResponseCode          = response.StatusCode.ToString(),
+                ResponseCode          = txResponse.StatusCode.ToString(),
                 CreatedAt             = DateTime.UtcNow,
-                CompletedAt           = null  // set by webhook when PROCESSING → final state
+                CompletedAt           = null
             };
 
             _db.Payments.Add(payment);
@@ -221,14 +306,15 @@ public sealed class WorldpayService : IWorldpayService
             {
                 PaymentId = payment.PaymentId,
                 Action    = PaymentAuditAction.Created,
-                Details   = $"Charge submitted for ${request.AmountCents / 100m:F2}; status={rawStatus}",
+                Details   = $"Charge submitted ${request.AmountCents / 100m:F2}; pmId={pmId}; status={rawStatus}",
                 Timestamp = DateTime.UtcNow
             });
             await _db.SaveChangesAsync();
 
-            _logger.LogInformation("[AUTHVIA] Transaction submitted: {PaymentId} — {Status}", payment.PaymentId, rawStatus);
+            _logger.LogInformation("[AUTHVIA] Charge submitted: {PaymentId} txId={TxId} status={Status}",
+                payment.PaymentId, transactionId, rawStatus);
 
-            return new PaymentResult(true, payment.PaymentId, transactionId, rawStatus, null, response.StatusCode.ToString());
+            return new PaymentResult(true, payment.PaymentId, transactionId, rawStatus, null, txResponse.StatusCode.ToString());
         }
         catch (Exception ex)
         {
@@ -238,11 +324,7 @@ public sealed class WorldpayService : IWorldpayService
     }
 
     // ------------------------------------------------------------------
-    // RefundAsync
-    //
-    // Authvia uses action = "REVERSAL" on the transactions endpoint
-    // Endpoint: POST /customers/{ref}/transactions
-    //   action = "REVERSAL"
+    // RefundAsync — REVERSAL on transaction
     // ------------------------------------------------------------------
 
     public async Task<RefundResult> RefundAsync(long paymentId, string authviaCustomerRef)
@@ -263,7 +345,7 @@ public sealed class WorldpayService : IWorldpayService
 
             var body = new
             {
-                action = "REVERSAL",
+                action     = "REVERSAL",
                 references = new[] { new { label = "originalTransactionId", value = payment.WorldpayTransactionId } }
             };
 
@@ -278,7 +360,7 @@ public sealed class WorldpayService : IWorldpayService
             }
 
             var json = await response.Content.ReadAsStringAsync();
-            using var doc = JsonDocument.Parse(json);
+            using var doc  = JsonDocument.Parse(json);
             var reversalId = doc.RootElement.TryGetProperty("id", out var rid) ? rid.GetString() : null;
 
             var refund = new PaymentRefund
@@ -327,8 +409,6 @@ public sealed class WorldpayService : IWorldpayService
 
     // ------------------------------------------------------------------
     // Webhook signature validation
-    // Add AUTHVIA_WEBHOOK_SECRET to Azure env vars after registering the
-    // webhook subscription at POST /subscriptions
     // ------------------------------------------------------------------
 
     public bool ValidateWebhookSignature(string payload, string signature)
@@ -340,8 +420,8 @@ public sealed class WorldpayService : IWorldpayService
             return false;
         }
 
-        using var hmac   = new HMACSHA256(Encoding.UTF8.GetBytes(webhookSecret));
-        var computedHex  = Convert.ToHexString(hmac.ComputeHash(Encoding.UTF8.GetBytes(payload))).ToLowerInvariant();
+        using var hmac  = new HMACSHA256(Encoding.UTF8.GetBytes(webhookSecret));
+        var computedHex = Convert.ToHexString(hmac.ComputeHash(Encoding.UTF8.GetBytes(payload))).ToLowerInvariant();
 
         var incoming = signature.StartsWith("sha256=", StringComparison.OrdinalIgnoreCase)
             ? signature[7..]
@@ -358,8 +438,8 @@ public sealed class WorldpayService : IWorldpayService
     {
         var json = JsonSerializer.Serialize(payload, new JsonSerializerOptions
         {
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-            DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
+            PropertyNamingPolicy           = JsonNamingPolicy.CamelCase,
+            DefaultIgnoreCondition         = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
         });
         return new StringContent(json, Encoding.UTF8, "application/json");
     }
@@ -385,14 +465,18 @@ public sealed class WorldpayService : IWorldpayService
 
 public record PaymentRequest(
     long? BookingId,
-    string? RecipientUserId,
+    string? RecipientUserId,   // used as Authvia customer ref (our user ID, no spaces)
     string PayerEmail,
     string? PayerName,
-    // Authvia tokenized identifiers — raw card data never touches our server
-    string AuthviaCustomerRef,       // our customer's ref in Authvia (e.g. our user ID)
-    string AuthviaPaymentMethodId,   // tokenized payment method ID from Authvia
-    string? CardLast4,               // display only, from Authvia tokenization response
-    string? CardBrand,               // display only
+    string? PayerPhone,        // E.164 format e.g. +14075551234
+    // Card details — server-side for sandbox; use Authvia web component in production
+    string NameOnCard,
+    string CardNumber,
+    int ExpirationMonth,
+    int ExpirationYear,
+    string? StreetAddress,
+    string? ZipCode,
+    string? CardBrand,         // display only
     long AmountCents,
     string CurrencyCode = "USD",
     string? Description = null);
