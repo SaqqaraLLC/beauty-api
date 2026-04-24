@@ -343,10 +343,11 @@ public sealed class WorldpayService : IWorldpayService
 
             var client = await GetAuthorizedClientAsync();
 
+            // transactionId is a REVERSAL-only body field per Authvia docs
             var body = new
             {
-                action     = "REVERSAL",
-                references = new[] { new { label = "originalTransactionId", value = payment.WorldpayTransactionId } }
+                action        = "REVERSAL",
+                transactionId = payment.WorldpayTransactionId
             };
 
             var url      = $"{GetBaseUrl()}/customers/{Uri.EscapeDataString(authviaCustomerRef)}/transactions";
