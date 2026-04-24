@@ -109,6 +109,128 @@ public class PaymentsController : ControllerBase
     }
 
     // ============================
+    // LIST PAYMENTS (Admin)
+    // ============================
+
+    [HttpGet]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> ListPayments(
+        [FromQuery] string? status,
+        [FromQuery] string? search,
+        [FromQuery] int page     = 1,
+        [FromQuery] int pageSize = 50)
+    {
+        var query = _db.Payments.AsNoTracking().AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(status) &&
+            Enum.TryParse<PaymentStatus>(status, ignoreCase: true, out var s))
+            query = query.Where(p => p.Status == s);
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var q = search.Trim();
+            query = query.Where(p =>
+                p.PayerEmail.Contains(q) ||
+                p.WorldpayTransactionId.Contains(q) ||
+                (p.Description != null && p.Description.Contains(q)));
+        }
+
+        var total = await query.CountAsync();
+        var items = await query
+            .OrderByDescending(p => p.CreatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(p => new
+            {
+                p.PaymentId,
+                p.WorldpayTransactionId,
+                p.BookingId,
+                p.PayerEmail,
+                p.AmountCents,
+                p.CurrencyCode,
+                p.Status,
+                p.Description,
+                p.CardLast4,
+                p.CardBrand,
+                p.CreatedAt,
+                p.CompletedAt,
+                p.ResponseCode
+            })
+            .ToListAsync();
+
+        return Ok(new { total, page, pageSize, items });
+    }
+
+    // ============================
+    // MANUAL PAYMENT (Admin)
+    // ============================
+
+    public record ManualPaymentRequest(
+        string PayerEmail,
+        string? PayerName,
+        long AmountCents,
+        string? Description,
+        long? BookingId,
+        string PaymentMethod,   // Cash, Check, BankTransfer, Zelle, Other
+        string? ReferenceNumber);
+
+    /// <summary>
+    /// Record a payment that was collected outside of Authvia (cash, check, bank transfer, Zelle, etc.)
+    /// Does not call Authvia — creates a Payment row directly with status Captured.
+    /// </summary>
+    [HttpPost("manual")]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> RecordManualPayment([FromBody] ManualPaymentRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.PayerEmail))
+            return BadRequest(new { error = "PayerEmail is required" });
+        if (request.AmountCents <= 0)
+            return BadRequest(new { error = "AmountCents must be greater than 0" });
+
+        var adminId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+
+        var payment = new Payment
+        {
+            WorldpayTransactionId = $"MANUAL-{request.PaymentMethod.ToUpperInvariant()}-{Guid.NewGuid():N}",
+            BookingId             = request.BookingId,
+            RecipientUserId       = adminId,
+            PayerEmail            = request.PayerEmail,
+            AmountCents           = request.AmountCents,
+            CurrencyCode          = "USD",
+            Status                = PaymentStatus.Captured,
+            Description           = request.Description ?? $"{request.PaymentMethod} payment" +
+                                    (request.ReferenceNumber != null ? $" · Ref: {request.ReferenceNumber}" : ""),
+            CardBrand             = request.PaymentMethod,
+            CreatedAt             = DateTime.UtcNow,
+            CompletedAt           = DateTime.UtcNow,
+            ResponseCode          = "MANUAL"
+        };
+
+        _db.Payments.Add(payment);
+        _db.PaymentAuditLogs.Add(new PaymentAuditLog
+        {
+            PaymentId = payment.PaymentId,
+            Action    = PaymentAuditAction.Captured,
+            Details   = $"Manual payment recorded by admin {adminId} · Method: {request.PaymentMethod}" +
+                        (request.ReferenceNumber != null ? $" · Ref: {request.ReferenceNumber}" : ""),
+            Timestamp = DateTime.UtcNow
+        });
+
+        await _db.SaveChangesAsync();
+
+        _logger.LogInformation("[PAYMENTS] Manual payment recorded: {PaymentId} by admin {Admin}",
+            payment.PaymentId, adminId);
+
+        return Ok(new
+        {
+            paymentId             = payment.PaymentId,
+            worldpayTransactionId = payment.WorldpayTransactionId,
+            status                = payment.Status,
+            message               = "Manual payment recorded"
+        });
+    }
+
+    // ============================
     // GET PAYMENT
     // ============================
 
