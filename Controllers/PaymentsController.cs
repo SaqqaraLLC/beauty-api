@@ -268,10 +268,12 @@ public class PaymentsController : ControllerBase
         "PAYMENT.FAILED"        => "PAYMENT.FAILED",
         "REFUND.COMPLETED"      => "REFUND.COMPLETED",
         "REFUND.FAILED"         => "REFUND.FAILED",
-        // Authvia confirmed event types (Craig, Apr 2026)
+        // Authvia official event types (Mallikarjuna, support ticket, Apr 2026)
+        "TRANSACTIONS.UPDATE"   => "PAYMENT.CHARGED",
+        "TRANSACTIONS.CREATE"   => "PAYMENT.AUTHORIZED",
+        // Earlier variants kept as fallback
         "TRANSACTION.UPDATE"    => "PAYMENT.CHARGED",
         "TRANSACTION.CREATE"    => "PAYMENT.AUTHORIZED",
-        // Earlier alias variants kept for safety
         "CONVERSATIONS.CREATE"  => "PAYMENT.AUTHORIZED",
         "CONVERSATIONS.UPDATE"  => "PAYMENT.CHARGED",
         "CONVERSATION.CREATED"  => "PAYMENT.AUTHORIZED",
