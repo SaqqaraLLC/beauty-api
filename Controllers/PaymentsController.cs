@@ -134,10 +134,14 @@ public class PaymentsController : ControllerBase
             body = await reader.ReadToEndAsync();
         Request.Body.Position = 0;
 
-        if (!Request.Headers.TryGetValue("X-Worldpay-Signature", out var sigHeader))
-            return Unauthorized(new { error = "Missing signature" });
+        Request.Headers.TryGetValue("X-AUTHVIA-VALUE",     out var authhviaValue);
+        Request.Headers.TryGetValue("X-AUTHVIA-TIMESTAMP", out var authhviaTimestamp);
+        Request.Headers.TryGetValue("X-AUTHVIA-SIGNATURE", out var authhviaSignature);
 
-        if (!_worldpayService.ValidateWebhookSignature(body, sigHeader.ToString()))
+        if (!_worldpayService.ValidateWebhookSignature(
+                authhviaValue.ToString(),
+                authhviaTimestamp.ToString(),
+                authhviaSignature.ToString()))
             return Unauthorized(new { error = "Invalid signature" });
 
         try
@@ -145,8 +149,11 @@ public class PaymentsController : ControllerBase
             using var doc = JsonDocument.Parse(body);
             var root = doc.RootElement;
 
-            var eventType     = root.TryGetProperty("type",  out var t) ? t.GetString()?.ToUpperInvariant() : null;
-            var transactionId = root.TryGetProperty("id",    out var i) ? i.GetString() : null;
+            var rawType       = root.TryGetProperty("type",  out var t) ? t.GetString() : null;
+            var eventType     = NormalizeEventType(rawType);
+            var transactionId = root.TryGetProperty("id",    out var i) ? i.GetString()
+                              : root.TryGetProperty("conversationId", out var ci) ? ci.GetString()
+                              : null;
 
             if (string.IsNullOrEmpty(eventType) || string.IsNullOrEmpty(transactionId))
             {
@@ -252,4 +259,20 @@ public class PaymentsController : ControllerBase
 
     private static WpPaymentAuditLog AuditEntry(long paymentId, WpPaymentAuditAction action, string details) =>
         new() { PaymentId = paymentId, Action = action, Details = details, Timestamp = DateTime.UtcNow };
+
+    private static string? NormalizeEventType(string? raw) => raw?.ToUpperInvariant() switch
+    {
+        "PAYMENT.AUTHORIZED"    => "PAYMENT.AUTHORIZED",
+        "PAYMENT.CHARGED"       => "PAYMENT.CHARGED",
+        "PAYMENT.DECLINED"      => "PAYMENT.DECLINED",
+        "PAYMENT.FAILED"        => "PAYMENT.FAILED",
+        "REFUND.COMPLETED"      => "REFUND.COMPLETED",
+        "REFUND.FAILED"         => "REFUND.FAILED",
+        // Authvia uses "conversations" for payments
+        "CONVERSATIONS.CREATE"  => "PAYMENT.AUTHORIZED",
+        "CONVERSATIONS.UPDATE"  => "PAYMENT.CHARGED",
+        "CONVERSATION.CREATED"  => "PAYMENT.AUTHORIZED",
+        "CONVERSATION.UPDATED"  => "PAYMENT.CHARGED",
+        _ => raw?.ToUpperInvariant()
+    };
 }

@@ -13,7 +13,7 @@ public interface IWorldpayService
     Task<PaymentResult> ChargeAsync(PaymentRequest request);
     Task<RefundResult> RefundAsync(long paymentId, long? amountCents = null);
     Task<WpPayment?> GetPaymentAsync(long paymentId);
-    bool ValidateWebhookSignature(string payload, string signature);
+    bool ValidateWebhookSignature(string? authhviaValue, string? timestamp, string? signature);
 }
 
 public sealed class WorldpayService : IWorldpayService
@@ -194,13 +194,21 @@ public sealed class WorldpayService : IWorldpayService
             .AsNoTracking()
             .FirstOrDefaultAsync(p => p.PaymentId == paymentId);
 
-    public bool ValidateWebhookSignature(string payload, string signature)
+    public bool ValidateWebhookSignature(string? authhviaValue, string? timestamp, string? signature)
     {
-        var secret = _config["Worldpay:WebhookSecret"];
-        if (string.IsNullOrEmpty(secret)) return false;
+        var secret = _config["AUTHVIA_WEBHOOK_SECRET"];
 
+        // No secret configured — allow through (e.g. Authvia's registration ping)
+        if (string.IsNullOrEmpty(secret)) return true;
+
+        // If secret is configured but headers are absent, reject
+        if (string.IsNullOrEmpty(authhviaValue) || string.IsNullOrEmpty(timestamp) || string.IsNullOrEmpty(signature))
+            return false;
+
+        // Authvia signature: HMAC-SHA256("{value}.{value.Length}.{timestamp}") → Base64
+        var message = $"{authhviaValue}.{authhviaValue.Length}.{timestamp}";
         using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(secret));
-        var computed = Convert.ToBase64String(hmac.ComputeHash(Encoding.UTF8.GetBytes(payload)));
+        var computed = Convert.ToBase64String(hmac.ComputeHash(Encoding.UTF8.GetBytes(message)));
         return computed.Equals(signature, StringComparison.Ordinal);
     }
 
