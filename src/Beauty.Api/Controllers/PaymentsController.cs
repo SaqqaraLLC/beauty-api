@@ -270,10 +270,13 @@ public class PaymentsController : ControllerBase
     // ============================
 
     /// <summary>
-    /// Register Saqqara's webhook URL with Authvia.
-    /// Call this once from Postman after deploying.
+    /// Register Saqqara's webhook URL with Authvia (one-time admin setup).
     /// POST https://api.saqqarallc.com/api/payments/register-webhook
-    /// Scope required on token: subscriptions:create + {resource}:read
+    ///
+    /// Before calling this, set AUTHVIA_WEBHOOK_TYPE in Azure App Settings to
+    /// the correct subscription type value (get it from Authvia support).
+    /// On success the response includes a "webhookSecret" field — copy that
+    /// value into Azure App Settings as AUTHVIA_WEBHOOK_SECRET.
     /// </summary>
     [HttpPost("register-webhook")]
     [Authorize(Roles = "Admin")]
@@ -281,17 +284,18 @@ public class PaymentsController : ControllerBase
     {
         try
         {
-            // Re-use the service token via WorldpayService internals is not accessible here,
-            // so we call the token endpoint directly in this one-off admin action.
-            var clientId  = _config["AUTHVIA_CLIENT_ID"]  ?? throw new InvalidOperationException("AUTHVIA_CLIENT_ID not configured");
-            var secretKey = _config["AUTHVIA_SECRET_KEY"] ?? throw new InvalidOperationException("AUTHVIA_SECRET_KEY not configured");
-            var isSandbox = (_config["AUTHVIA_ENVIRONMENT"] ?? "production").Equals("sandbox", StringComparison.OrdinalIgnoreCase);
-            var baseUrl   = _config["AUTHVIA_BASE_URL"]?.TrimEnd('/')
+            var clientId      = _config["AUTHVIA_CLIENT_ID"]    ?? throw new InvalidOperationException("AUTHVIA_CLIENT_ID not configured");
+            var secretKey     = _config["AUTHVIA_SECRET_KEY"]   ?? throw new InvalidOperationException("AUTHVIA_SECRET_KEY not configured");
+            var webhookType   = _config["AUTHVIA_WEBHOOK_TYPE"] ?? throw new InvalidOperationException(
+                "AUTHVIA_WEBHOOK_TYPE not configured. Set it in Azure App Settings to the subscription type confirmed by Authvia support.");
+            var isSandbox     = (_config["AUTHVIA_ENVIRONMENT"] ?? "production").Equals("sandbox", StringComparison.OrdinalIgnoreCase);
+            var baseUrl       = _config["AUTHVIA_BASE_URL"]?.TrimEnd('/')
                 ?? (isSandbox ? "https://sandbox.authvia.com/v3" : "https://api.authvia.com/v3");
 
-            var signatureValue = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
-            var timestamp      = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            var sigInput       = $"{signatureValue}.{signatureValue.Length}.{timestamp}";
+            // --- Step 1: Get bearer token (same HMAC-SHA256 algorithm as WorldpayService) ---
+            var sigValue  = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
+            var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            var sigInput  = $"{sigValue}.{sigValue.Length}.{timestamp}";
 
             using var hmac = new System.Security.Cryptography.HMACSHA256(Encoding.UTF8.GetBytes(secretKey));
             var signature  = Convert.ToBase64String(hmac.ComputeHash(Encoding.UTF8.GetBytes(sigInput)));
@@ -302,49 +306,97 @@ public class PaymentsController : ControllerBase
                 audience        = "api.authvia.com/v3",
                 timestamp       = timestamp,
                 signature       = signature,
-                signature_value = signatureValue,
+                signature_value = sigValue,
                 scope           = "subscriptions:create customers.transactions:read"
             });
 
-            var httpClient   = _httpClientFactory.CreateClient();
-            var tokenResp    = await httpClient.PostAsync($"{baseUrl}/tokens",
+            var httpClient = _httpClientFactory.CreateClient();
+            var tokenResp  = await httpClient.PostAsync($"{baseUrl}/tokens",
                 new StringContent(tokenBody, Encoding.UTF8, "application/json"));
 
             if (!tokenResp.IsSuccessStatusCode)
             {
                 var err = await tokenResp.Content.ReadAsStringAsync();
+                _logger.LogError("[AUTHVIA] Token request failed: {Status} — {Body}", tokenResp.StatusCode, err);
                 return BadRequest(new { error = $"Token request failed: {err}" });
             }
 
-            var tokenJson   = await tokenResp.Content.ReadAsStringAsync();
-            using var tDoc  = JsonDocument.Parse(tokenJson);
-            var bearerToken = tDoc.RootElement.GetProperty("access_token").GetString();
+            var tokenJson = await tokenResp.Content.ReadAsStringAsync();
+            using var tDoc = JsonDocument.Parse(tokenJson);
+            // Authvia returns { "type": "Bearer", "token": "eyJ..." }
+            var bearerToken = tDoc.RootElement.TryGetProperty("token", out var t)
+                ? t.GetString()
+                : tDoc.RootElement.TryGetProperty("access_token", out var at) ? at.GetString() : null;
+
+            if (string.IsNullOrEmpty(bearerToken))
+                return BadRequest(new { error = "Token response did not contain a bearer token", raw = tokenJson });
 
             httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
             httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
-            var subscriptionBody = JsonSerializer.Serialize(new
+            // --- Step 2: Register subscription ---
+            var subBody = JsonSerializer.Serialize(new
             {
                 destination = "https://api.saqqarallc.com/api/payments/webhook",
-                type        = "customers.transactions:update",
+                type        = webhookType,
                 disabled    = false
             });
 
             var subResp = await httpClient.PostAsync($"{baseUrl}/subscriptions",
-                new StringContent(subscriptionBody, Encoding.UTF8, "application/json"));
+                new StringContent(subBody, Encoding.UTF8, "application/json"));
 
             var subJson = await subResp.Content.ReadAsStringAsync();
 
             if (!subResp.IsSuccessStatusCode)
-                return BadRequest(new { error = $"Subscription registration failed: {subJson}" });
+            {
+                _logger.LogError("[AUTHVIA] Subscription registration failed: {Status} — {Body}", subResp.StatusCode, subJson);
+                return BadRequest(new { error = $"Subscription registration failed ({subResp.StatusCode})", raw = subJson });
+            }
 
-            _logger.LogInformation("[AUTHVIA] Webhook subscription registered: {Response}", subJson);
-            return Ok(new { message = "Webhook registered successfully", response = subJson });
+            // --- Step 3: Extract the signing secret from the response ---
+            // Authvia may use any of these field names for the webhook signing secret.
+            using var subDoc = JsonDocument.Parse(subJson);
+            var subRoot      = subDoc.RootElement;
+
+            var webhookSecret = TryGetStringProperty(subRoot,
+                "secret", "signingSecret", "signing_secret", "webhook_secret", "webhookSecret", "key");
+
+            var subscriptionId = TryGetStringProperty(subRoot, "id", "subscriptionId", "subscription_id");
+
+            _logger.LogInformation("[AUTHVIA] Webhook registered. id={Id} secretFound={SecretFound}",
+                subscriptionId, webhookSecret != null);
+
+            if (webhookSecret == null)
+            {
+                _logger.LogWarning("[AUTHVIA] No signing secret found in subscription response. Full response: {Body}", subJson);
+            }
+
+            return Ok(new
+            {
+                message        = "Webhook registered successfully",
+                subscriptionId = subscriptionId,
+                // ⚠️  Copy this value into Azure App Settings as AUTHVIA_WEBHOOK_SECRET
+                webhookSecret  = webhookSecret ?? "(not returned — check raw response)",
+                nextStep       = webhookSecret != null
+                    ? "Copy the webhookSecret value into Azure App Settings as AUTHVIA_WEBHOOK_SECRET, then restart the app."
+                    : "No secret found in Authvia's response. Check raw to find the field name and update this endpoint.",
+                raw            = subJson
+            });
         }
         catch (Exception ex)
         {
             _logger.LogError("[AUTHVIA] Webhook registration error: {Message}", ex.Message);
             return StatusCode(500, new { error = ex.Message });
         }
+    }
+
+    private static string? TryGetStringProperty(JsonElement element, params string[] names)
+    {
+        foreach (var name in names)
+        {
+            if (element.TryGetProperty(name, out var prop) && prop.ValueKind == JsonValueKind.String)
+                return prop.GetString();
+        }
+        return null;
     }
 }
