@@ -2,6 +2,7 @@ using Beauty.Api.Models;
 using Beauty.Api.Models.ApprovalHistory;
 using Beauty.Api.Models.Broadcasting;
 using Beauty.Api.Models.Payments;
+using Beauty.Api.Models.Products;
 using Beauty.Api.Models.Streams;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
@@ -37,6 +38,10 @@ public class BeautyDbContext
     public DbSet<PaymentRefund>   PaymentRefunds => Set<PaymentRefund>();
     public DbSet<PaymentAuditLog> PaymentAuditLogs => Set<PaymentAuditLog>();
     public DbSet<WebhookEvent>    WebhookEvents  => Set<WebhookEvent>();
+
+    // Products
+    public DbSet<Product>       Products       => Set<Product>();
+    public DbSet<ProductReview> ProductReviews => Set<ProductReview>();
 
     // Streams (Artist profiles and content)
     public DbSet<ArtistStream> ArtistStreams => Set<ArtistStream>();
@@ -153,6 +158,23 @@ public class BeautyDbContext
             entity.HasIndex(x => x.EventId).IsUnique();           // idempotency key
             entity.HasIndex(x => x.TransactionRef);               // fast lookup by transaction
             entity.HasIndex(x => new { x.Processed, x.ReceivedAt });
+        });
+
+        // Products Configuration
+        builder.Entity<Product>(entity =>
+        {
+            entity.HasKey(x => x.ProductId);
+            entity.Property(x => x.Status).HasConversion<string>();
+            entity.HasMany(x => x.Reviews).WithOne(r => r.Product).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(x => x.Status);
+            entity.HasIndex(x => x.Category);
+            entity.HasIndex(x => new { x.VendorName, x.Status });
+        });
+
+        builder.Entity<ProductReview>(entity =>
+        {
+            entity.HasKey(x => x.ReviewId);
+            entity.HasIndex(x => new { x.ProductId, x.ReviewedAt });
         });
 
         // Streams Configuration
