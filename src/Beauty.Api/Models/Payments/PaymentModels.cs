@@ -136,6 +136,40 @@ public enum RefundStatus
     Cancelled = 4
 }
 
+/// <summary>
+/// Raw webhook event log — every Authvia webhook is persisted here before processing.
+/// Used for idempotency checks, audit, and replay.
+/// </summary>
+public class WebhookEvent
+{
+    public long   Id               { get; set; }
+
+    /// <summary>Authvia's unique event ID — unique index for idempotency.</summary>
+    [Required, StringLength(200)]
+    public string EventId          { get; set; } = string.Empty;
+
+    /// <summary>Raw event type string from Authvia (e.g. "transaction.captured").</summary>
+    [Required, StringLength(100)]
+    public string RawEventType     { get; set; } = string.Empty;
+
+    /// <summary>Normalized internal event type (e.g. "transaction.captured").</summary>
+    [StringLength(100)]
+    public string? InternalEventType { get; set; }
+
+    /// <summary>Transaction ID / ref extracted from the payload.</summary>
+    [StringLength(200)]
+    public string? TransactionRef  { get; set; }
+
+    /// <summary>Full raw JSON body — stored for audit and replay.</summary>
+    public string  RawPayload      { get; set; } = string.Empty;
+
+    public DateTime ReceivedAt     { get; set; }
+    public bool     Processed      { get; set; }
+
+    [StringLength(500)]
+    public string? ProcessingNotes { get; set; }
+}
+
 public enum PaymentAuditAction
 {
     Created = 1,

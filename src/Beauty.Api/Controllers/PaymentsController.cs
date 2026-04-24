@@ -1,7 +1,9 @@
+using Beauty.Api.Data;
 using Beauty.Api.Models.Payments;
 using Beauty.Api.Services.Payments;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -17,17 +19,20 @@ public class PaymentsController : ControllerBase
     private readonly ILogger<PaymentsController> _logger;
     private readonly IConfiguration _config;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly BeautyDbContext _db;
 
     public PaymentsController(
         IWorldpayService worldpayService,
         ILogger<PaymentsController> logger,
         IConfiguration config,
-        IHttpClientFactory httpClientFactory)
+        IHttpClientFactory httpClientFactory,
+        BeautyDbContext db)
     {
         _worldpayService   = worldpayService;
         _logger            = logger;
         _config            = config;
         _httpClientFactory = httpClientFactory;
+        _db                = db;
     }
 
     // ============================
@@ -170,6 +175,9 @@ public class PaymentsController : ControllerBase
     /// <summary>
     /// Authvia webhook endpoint for payment lifecycle events.
     /// Registered URL: https://api.saqqarallc.com/api/payments/webhook
+    ///
+    /// All events are persisted to WebhookEvents before processing (audit + replay).
+    /// Duplicate event IDs are silently acknowledged (idempotent).
     /// </summary>
     [HttpPost("webhook")]
     [AllowAnonymous]
@@ -177,92 +185,239 @@ public class PaymentsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> HandleWebhook()
     {
+        // EnableBuffering so we can read the body for both signature verification and JSON parsing.
+        Request.EnableBuffering();
+        var body = await new StreamReader(Request.Body, leaveOpen: true).ReadToEndAsync();
+        Request.Body.Position = 0;
+
+        // ── 1. Signature verification ────────────────────────────────────────────
+        var signatureHeader =
+            Request.Headers.TryGetValue("X-Authvia-Signature",  out var sig1) ? sig1.ToString() :
+            Request.Headers.TryGetValue("X-Worldpay-Signature", out var sig2) ? sig2.ToString() :
+            null;
+
+        if (string.IsNullOrEmpty(signatureHeader))
+        {
+            _logger.LogWarning("[WEBHOOK] Missing signature header");
+            return Unauthorized(new { error = "Missing signature" });
+        }
+
+        if (!_worldpayService.ValidateWebhookSignature(body, signatureHeader))
+        {
+            _logger.LogWarning("[WEBHOOK] Signature validation failed");
+            return Unauthorized(new { error = "Invalid signature" });
+        }
+
+        // ── 2. Parse payload ─────────────────────────────────────────────────────
         try
         {
-            // EnableBuffering allows us to read the body twice (once for signature, once for JSON)
-            Request.EnableBuffering();
-            var body = await new StreamReader(Request.Body, leaveOpen: true).ReadToEndAsync();
-            Request.Body.Position = 0;
+            using var doc = JsonDocument.Parse(body);
+            var root = doc.RootElement;
 
-            // Authvia sends the signature in X-Authvia-Signature; fall back to X-Worldpay-Signature
-            // until the exact header name is confirmed in Authvia developer docs
-            var signatureHeader = Request.Headers.TryGetValue("X-Authvia-Signature", out var authviaSig)
-                ? authviaSig.ToString()
-                : Request.Headers.TryGetValue("X-Worldpay-Signature", out var wpSig)
-                    ? wpSig.ToString()
-                    : null;
+            // Extract raw event type (Authvia may use "eventType", "event_type", or "type")
+            var rawEventType = TryGetStringProperty(root, "eventType", "event_type", "type") ?? "unknown";
 
-            if (string.IsNullOrEmpty(signatureHeader))
+            // Extract Authvia's unique event ID for idempotency
+            var eventId = TryGetStringProperty(root, "eventId", "event_id", "id") ?? Guid.NewGuid().ToString();
+
+            // Extract transaction ref from common payload shapes:
+            //   { data: { id, ref } }  or  { transaction: { id } }  or  { id }
+            var txRef = ExtractTransactionRef(root);
+
+            var internalType = NormalizeEventType(rawEventType);
+
+            _logger.LogInformation("[WEBHOOK] Received {RawType} → {InternalType} eventId={EventId} txRef={TxRef}",
+                rawEventType, internalType, eventId, txRef);
+
+            // ── 3. Idempotency — skip if already processed ───────────────────────
+            var alreadyProcessed = await _db.WebhookEvents
+                .AnyAsync(e => e.EventId == eventId);
+
+            if (alreadyProcessed)
             {
-                _logger.LogWarning("[WEBHOOK] Incoming request missing signature header");
-                return Unauthorized(new { error = "Missing signature" });
+                _logger.LogInformation("[WEBHOOK] Duplicate event ignored: {EventId}", eventId);
+                return Ok(new { status = "duplicate", eventId });
             }
 
-            if (!_worldpayService.ValidateWebhookSignature(body, signatureHeader))
+            // ── 4. Persist raw payload ───────────────────────────────────────────
+            var webhookEvent = new WebhookEvent
             {
-                _logger.LogWarning("[WEBHOOK] Signature validation failed");
-                return Unauthorized(new { error = "Invalid signature" });
-            }
+                EventId           = eventId,
+                RawEventType      = rawEventType,
+                InternalEventType = internalType,
+                TransactionRef    = txRef,
+                RawPayload        = body,
+                ReceivedAt        = DateTime.UtcNow,
+                Processed         = false
+            };
+            _db.WebhookEvents.Add(webhookEvent);
+            await _db.SaveChangesAsync();
 
-            using var doc  = System.Text.Json.JsonDocument.Parse(body);
-            var root       = doc.RootElement;
-            var eventType  = root.TryGetProperty("eventType", out var et) ? et.GetString() : "UNKNOWN";
+            // ── 5. Process event ─────────────────────────────────────────────────
+            var notes = await DispatchWebhookEventAsync(internalType, txRef, root);
 
-            _logger.LogInformation("[WEBHOOK] Authvia event received: {EventType}", eventType);
+            webhookEvent.Processed        = true;
+            webhookEvent.ProcessingNotes  = notes;
+            await _db.SaveChangesAsync();
 
-            switch (eventType?.ToUpperInvariant())
-            {
-                case "PAYMENT.AUTHORIZED":
-                case "PAYMENT_AUTHORIZED":
-                    // Payment authorized — update status in DB when ready
-                    break;
-
-                case "PAYMENT.CAPTURED":
-                case "PAYMENT_CAPTURED":
-                case "PAYMENT.CHARGED":
-                    // Payment captured — mark booking as paid
-                    break;
-
-                case "PAYMENT.FAILED":
-                case "PAYMENT_FAILED":
-                case "PAYMENT.DECLINED":
-                    // Payment failed — notify booking system
-                    break;
-
-                case "PAYMENT.REFUNDED":
-                case "REFUND.COMPLETED":
-                    // Refund confirmed — update refund record
-                    break;
-
-                case "DISPUTE.CREATED":
-                    // Chargeback opened — flag payment, hold payout
-                    break;
-
-                case "DISPUTE.RESOLVED":
-                    // Chargeback resolved — release or void payout accordingly
-                    break;
-
-                case "PAYOUT.PROCESSED":
-                    // Artist payout sent
-                    break;
-
-                case "PAYOUT.FAILED":
-                    // Artist payout failed — alert
-                    break;
-
-                default:
-                    _logger.LogWarning("[WEBHOOK] Unhandled event type: {EventType}", eventType);
-                    break;
-            }
-
-            // Always return 200 — Authvia will retry on non-2xx
-            return Ok(new { status = "received", eventType });
+            return Ok(new { status = "processed", eventId, internalType });
         }
         catch (Exception ex)
         {
-            _logger.LogError("[WEBHOOK] Error processing webhook: {Message}", ex.Message);
-            return BadRequest(new { error = "Webhook processing failed" });
+            _logger.LogError(ex, "[WEBHOOK] Unhandled error processing webhook");
+            // Return 200 to prevent Authvia from retrying a payload we already persisted.
+            return Ok(new { status = "error", message = "Persisted but processing failed" });
         }
+    }
+
+    // ── Event dispatch ────────────────────────────────────────────────────────────
+
+    private async Task<string> DispatchWebhookEventAsync(string internalType, string? txRef, JsonElement root)
+    {
+        Payment? payment = txRef != null
+            ? await _db.Payments.FirstOrDefaultAsync(p => p.WorldpayTransactionId == txRef)
+            : null;
+
+        switch (internalType)
+        {
+            case "transaction.created":
+                // Charge submitted — we already created the Payment row during ChargeAsync.
+                return "acknowledged";
+
+            case "transaction.authorized":
+                if (payment != null && payment.Status == PaymentStatus.Pending)
+                {
+                    payment.Status = PaymentStatus.Authorized;
+                    await _db.SaveChangesAsync();
+                    return $"payment {payment.PaymentId} → Authorized";
+                }
+                return payment == null ? "payment not found" : "no status change";
+
+            case "transaction.captured":
+            case "transaction.settled":
+                if (payment != null && payment.Status != PaymentStatus.Captured)
+                {
+                    payment.Status      = PaymentStatus.Captured;
+                    payment.CompletedAt = DateTime.UtcNow;
+                    await _db.SaveChangesAsync();
+                    _logger.LogInformation("[WEBHOOK] Payment {Id} marked Captured", payment.PaymentId);
+                    return $"payment {payment.PaymentId} → Captured";
+                }
+                return payment == null ? "payment not found" : "no status change";
+
+            case "transaction.declined":
+                if (payment != null && payment.Status == PaymentStatus.Pending)
+                {
+                    payment.Status = PaymentStatus.Declined;
+                    await _db.SaveChangesAsync();
+                    return $"payment {payment.PaymentId} → Declined";
+                }
+                return payment == null ? "payment not found" : "no status change";
+
+            case "transaction.failed":
+                if (payment != null)
+                {
+                    payment.Status       = PaymentStatus.Failed;
+                    payment.ErrorMessage = TryGetStringProperty(root, "reason", "message", "error");
+                    await _db.SaveChangesAsync();
+                    return $"payment {payment.PaymentId} → Failed";
+                }
+                return "payment not found";
+
+            case "transaction.refunded":
+            case "transaction.reversed":
+            case "transaction.voided":
+                if (payment != null)
+                {
+                    payment.Status = PaymentStatus.Refunded;
+                    await _db.SaveChangesAsync();
+                    return $"payment {payment.PaymentId} → Refunded";
+                }
+                return "payment not found";
+
+            case "transaction.chargeback":
+                if (payment != null)
+                {
+                    // Mark as failed and note the chargeback — payout should be held
+                    payment.Status       = PaymentStatus.Failed;
+                    payment.ErrorMessage = "Chargeback filed";
+                    await _db.SaveChangesAsync();
+                    _logger.LogWarning("[WEBHOOK] Chargeback on payment {Id}", payment.PaymentId);
+                    return $"payment {payment.PaymentId} → chargeback flagged";
+                }
+                return "payment not found";
+
+            case "transaction.updated":
+                // Status sync — re-map whatever status Authvia reports
+                if (payment != null)
+                {
+                    var rawStatus = TryGetStringProperty(root, "status",
+                        "data.status", "transaction.status") ?? "";
+                    _logger.LogInformation("[WEBHOOK] transaction.updated payment={Id} rawStatus={S}",
+                        payment.PaymentId, rawStatus);
+                    return $"payment {payment.PaymentId} status noted: {rawStatus}";
+                }
+                return "payment not found";
+
+            default:
+                _logger.LogWarning("[WEBHOOK] Unhandled internal event type: {Type}", internalType);
+                return $"unhandled: {internalType}";
+        }
+    }
+
+    // ── Translation layer — map Authvia's names to our internal model ─────────────
+    // When Authvia support confirms the exact type strings, add them here.
+
+    private static string NormalizeEventType(string raw) => raw.ToLowerInvariant() switch
+    {
+        "transaction.created"                                            => "transaction.created",
+        "transaction.authorized"  or "payment.authorized"
+            or "payment_authorized"                                      => "transaction.authorized",
+        "transaction.declined"    or "payment.declined"
+            or "payment_declined"                                        => "transaction.declined",
+        "transaction.captured"    or "payment.captured"
+            or "payment_captured" or "payment.charged"                  => "transaction.captured",
+        "transaction.settled"     or "payment.settled"                  => "transaction.settled",
+        "transaction.failed"      or "payment.failed"
+            or "payment_failed"                                          => "transaction.failed",
+        "transaction.refunded"    or "payment.refunded"
+            or "refund.completed"                                        => "transaction.refunded",
+        "transaction.voided"      or "payment.voided"                   => "transaction.voided",
+        "transaction.reversed"    or "payment.reversed"
+            or "payment.reversal"                                        => "transaction.reversed",
+        "transaction.chargeback"  or "dispute.created"                  => "transaction.chargeback",
+        "transaction.updated"     or "payment.updated"                  => "transaction.updated",
+        _                                                                => raw.ToLowerInvariant()
+    };
+
+    // ── Payload helpers ───────────────────────────────────────────────────────────
+
+    private static string? ExtractTransactionRef(JsonElement root)
+    {
+        // Try data.id / data.ref first (most payment platforms wrap in a data envelope)
+        if (root.TryGetProperty("data", out var data))
+        {
+            var val = TryGetStringProperty(data, "id", "ref", "transactionId", "transaction_id");
+            if (val != null) return val;
+        }
+        // Try transaction.id
+        if (root.TryGetProperty("transaction", out var tx))
+        {
+            var val = TryGetStringProperty(tx, "id", "ref");
+            if (val != null) return val;
+        }
+        // Top-level fallback
+        return TryGetStringProperty(root, "transactionId", "transaction_id", "ref");
+    }
+
+    private static string? TryGetStringProperty(JsonElement element, params string[] names)
+    {
+        foreach (var name in names)
+        {
+            if (element.TryGetProperty(name, out var prop) && prop.ValueKind == JsonValueKind.String)
+                return prop.GetString();
+        }
+        return null;
     }
 
     // ============================
@@ -388,15 +543,5 @@ public class PaymentsController : ControllerBase
             _logger.LogError("[AUTHVIA] Webhook registration error: {Message}", ex.Message);
             return StatusCode(500, new { error = ex.Message });
         }
-    }
-
-    private static string? TryGetStringProperty(JsonElement element, params string[] names)
-    {
-        foreach (var name in names)
-        {
-            if (element.TryGetProperty(name, out var prop) && prop.ValueKind == JsonValueKind.String)
-                return prop.GetString();
-        }
-        return null;
     }
 }

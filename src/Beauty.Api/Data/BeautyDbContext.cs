@@ -33,9 +33,10 @@ public class BeautyDbContext
     public DbSet<BroadcastAuditLog> BroadcastAuditLogs => Set<BroadcastAuditLog>();
 
     // Payments
-    public DbSet<Payment> Payments => Set<Payment>();
-    public DbSet<PaymentRefund> PaymentRefunds => Set<PaymentRefund>();
+    public DbSet<Payment>         Payments       => Set<Payment>();
+    public DbSet<PaymentRefund>   PaymentRefunds => Set<PaymentRefund>();
     public DbSet<PaymentAuditLog> PaymentAuditLogs => Set<PaymentAuditLog>();
+    public DbSet<WebhookEvent>    WebhookEvents  => Set<WebhookEvent>();
 
     // Streams (Artist profiles and content)
     public DbSet<ArtistStream> ArtistStreams => Set<ArtistStream>();
@@ -143,6 +144,15 @@ public class BeautyDbContext
             entity.HasKey(x => x.LogId);
             entity.Property(x => x.Action).HasConversion<string>();
             entity.HasIndex(x => new { x.PaymentId, x.Timestamp });
+        });
+
+        builder.Entity<WebhookEvent>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.RawPayload).HasColumnType("longtext");
+            entity.HasIndex(x => x.EventId).IsUnique();           // idempotency key
+            entity.HasIndex(x => x.TransactionRef);               // fast lookup by transaction
+            entity.HasIndex(x => new { x.Processed, x.ReceivedAt });
         });
 
         // Streams Configuration
