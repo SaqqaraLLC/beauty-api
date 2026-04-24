@@ -4,6 +4,8 @@ using Beauty.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 
 namespace Beauty.Api.Controllers;
@@ -17,13 +19,17 @@ public class PaymentsController : ControllerBase
     private readonly BeautyDbContext _db;
     private readonly ILogger<PaymentsController> _logger;
 
+    private readonly IConfiguration _config;
+
     public PaymentsController(
         IWorldpayService worldpayService,
         BeautyDbContext db,
+        IConfiguration config,
         ILogger<PaymentsController> logger)
     {
         _worldpayService = worldpayService;
-        _db = db;
+        _db     = db;
+        _config = config;
         _logger = logger;
     }
 
@@ -254,6 +260,90 @@ public class PaymentsController : ControllerBase
         {
             _logger.LogError(ex, "[WEBHOOK] Processing error");
             return BadRequest(new { error = "Webhook processing failed" });
+        }
+    }
+
+    // ── POST /api/payments/register-webhook ───────────────────────────────────
+    // Admin: fetches a fresh Authvia token then registers the webhook subscription.
+    // Avoids the 30-minute expiry problem — token is acquired and used immediately.
+
+    [HttpPost("register-webhook")]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> RegisterWebhook()
+    {
+        try
+        {
+            var clientId   = _config["AUTHVIA_CLIENT_ID"]  ?? throw new InvalidOperationException("AUTHVIA_CLIENT_ID not configured");
+            var secretKey  = _config["AUTHVIA_SECRET_KEY"] ?? throw new InvalidOperationException("AUTHVIA_SECRET_KEY not configured");
+            var accountId  = _config["AUTHVIA_ACCOUNT_ID"] ?? "6e777b79-b8e4-4dd3-b888-2401f6a7ea64";
+            var baseUrl    = (_config["AUTHVIA_BASE_URL"] ?? "https://api.authvia.com/v3").TrimEnd('/');
+            var tokenUrl   = _config["AUTHVIA_TOKEN_URL"] ?? $"{baseUrl}/tokens";
+            var webhookSecret = _config["AUTHVIA_WEBHOOK_SECRET"] ?? throw new InvalidOperationException("AUTHVIA_WEBHOOK_SECRET not configured");
+            var destination   = $"{Request.Scheme}://{Request.Host}/api/payments/webhook";
+
+            // Step 1 — get a fresh bearer token
+            var sigValue  = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
+            var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            var sigInput  = $"{sigValue}.{sigValue.Length}.{timestamp}";
+
+            using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(secretKey));
+            var signature  = Convert.ToBase64String(hmac.ComputeHash(Encoding.UTF8.GetBytes(sigInput)));
+
+            using var http = new HttpClient();
+
+            var tokenBody = JsonSerializer.Serialize(new
+            {
+                client_id       = clientId,
+                audience        = "api.authvia.com/v3",
+                timestamp       = timestamp,
+                signature       = signature,
+                signature_value = sigValue
+            });
+
+            var tokenResp = await http.PostAsync(tokenUrl,
+                new StringContent(tokenBody, Encoding.UTF8, "application/json"));
+
+            if (!tokenResp.IsSuccessStatusCode)
+            {
+                var err = await tokenResp.Content.ReadAsStringAsync();
+                _logger.LogError("[AUTHVIA] Token request failed: {Status} {Body}", tokenResp.StatusCode, err);
+                return StatusCode(502, new { error = "Failed to obtain Authvia token", detail = err });
+            }
+
+            using var tokenDoc = JsonDocument.Parse(await tokenResp.Content.ReadAsStringAsync());
+            var bearerToken = tokenDoc.RootElement.GetProperty("token").GetString()
+                ?? throw new InvalidOperationException("Authvia token response missing token field");
+
+            // Step 2 — register subscription using the fresh token
+            http.DefaultRequestHeaders.Add("Authorization", $"Bearer {bearerToken}");
+            http.DefaultRequestHeaders.Add("accept", "application/json");
+
+            var subBody = JsonSerializer.Serialize(new
+            {
+                type        = "transactions.update",
+                secret      = webhookSecret,
+                destination = destination
+            });
+
+            var subResp = await http.PostAsync(
+                $"{baseUrl}/accounts/{accountId}/subscriptions",
+                new StringContent(subBody, Encoding.UTF8, "application/json"));
+
+            var subRaw = await subResp.Content.ReadAsStringAsync();
+
+            if (!subResp.IsSuccessStatusCode)
+            {
+                _logger.LogError("[AUTHVIA] Subscription registration failed: {Status} {Body}", subResp.StatusCode, subRaw);
+                return StatusCode(502, new { error = "Subscription registration failed", detail = subRaw });
+            }
+
+            _logger.LogInformation("[AUTHVIA] Webhook registered: {Destination}", destination);
+            return Ok(new { registered = true, destination, type = "transactions.update", response = subRaw });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[AUTHVIA] register-webhook error");
+            return StatusCode(500, new { error = ex.Message });
         }
     }
 
