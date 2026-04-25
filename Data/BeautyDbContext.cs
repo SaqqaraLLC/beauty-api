@@ -34,7 +34,9 @@ public class BeautyDbContext
     public DbSet<Artist> Artists => Set<Artist>();
     public DbSet<Customer> Customers => Set<Customer>();
     public DbSet<Location> Locations => Set<Location>();
-    public DbSet<Service> Services => Set<Service>();
+    public DbSet<Service>         Services         => Set<Service>();
+    public DbSet<ServiceCategory> ServiceCategories => Set<ServiceCategory>();
+    public DbSet<ServiceAddOn>    ServiceAddOns     => Set<ServiceAddOn>();
     public DbSet<StreamQuotaOverride> StreamQuotaOverrides => Set<StreamQuotaOverride>();
 
     // ── Enterprise — canonical tenant entities ─────────────────────
@@ -708,6 +710,47 @@ public class BeautyDbContext
 
             entity.HasIndex(x => x.CycleId);
             entity.HasIndex(x => x.ProviderUserId);
+        });
+
+        // ── ServiceCategory ───────────────────────────────────────
+        builder.Entity<ServiceCategory>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Key).HasMaxLength(50).IsRequired();
+            entity.Property(x => x.DisplayName).HasMaxLength(100).IsRequired();
+            entity.HasIndex(x => x.Key).IsUnique();
+            entity.HasIndex(x => x.IsActive);
+        });
+
+        // ── Service (category FK nullable — existing rows unaffected) ─
+        builder.Entity<Service>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Name).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.Description).HasMaxLength(1000);
+            entity.Property(x => x.Price).HasColumnType("decimal(10,2)");
+            entity.HasOne(x => x.Category)
+                  .WithMany(c => c.Services)
+                  .HasForeignKey(x => x.CategoryId)
+                  .IsRequired(false)
+                  .OnDelete(DeleteBehavior.SetNull);
+            entity.HasMany(x => x.AddOns)
+                  .WithOne(a => a.Service)
+                  .HasForeignKey(a => a.ServiceId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(x => x.CategoryId);
+            entity.HasIndex(x => x.Active);
+        });
+
+        // ── ServiceAddOn ──────────────────────────────────────────
+        builder.Entity<ServiceAddOn>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Name).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.Description).HasMaxLength(500);
+            entity.Property(x => x.Price).HasColumnType("decimal(10,2)");
+            entity.HasIndex(x => new { x.ServiceId, x.IsActive });
+            entity.HasIndex(x => x.SortOrder);
         });
     }
 }
