@@ -20,6 +20,7 @@
 		<PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="9.0.4" />
 		<PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.4" />
 		<PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.15.0" />
+		<PackageReference Include="Microsoft.IdentityModel.Protocols.OpenIdConnect" Version="8.15.0" />
 		<PackageReference Include="Microsoft.IdentityModel.Tokens" Version="8.15.0" />
 
 		<PackageReference Include="Microsoft.Kiota.Abstractions" Version="1.22.1" />

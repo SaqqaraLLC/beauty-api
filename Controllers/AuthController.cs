@@ -9,6 +9,9 @@ using Microsoft.AspNetCore.Identity.Data;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Protocols;
+using Microsoft.IdentityModel.Protocols.OpenIdConnect;
+using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
@@ -258,6 +261,78 @@ public sealed class AuthController : ControllerBase
 
             return Ok();
         
+    }
+
+    // ── Microsoft SSO ─────────────────────────────────────────────────────────
+
+    public record MicrosoftTokenDto(string IdToken);
+
+    [HttpPost("microsoft-token")]
+    [AllowAnonymous]
+    public async Task<IActionResult> MicrosoftToken([FromBody] MicrosoftTokenDto dto)
+    {
+        if (string.IsNullOrWhiteSpace(dto.IdToken))
+            return BadRequest(new { error = "Token is required." });
+
+        var tenantId = _config["AzureAd:TenantId"];
+        var clientId = _config["AzureAd:ClientId"];
+
+        try
+        {
+            var metadataAddress = $"https://login.microsoftonline.com/{tenantId}/v2.0/.well-known/openid-configuration";
+            var configManager = new ConfigurationManager<OpenIdConnectConfiguration>(
+                metadataAddress,
+                new OpenIdConnectConfigurationRetriever());
+
+            var openIdConfig = await configManager.GetConfigurationAsync(CancellationToken.None);
+
+            var handler = new JsonWebTokenHandler();
+            var validationResult = await handler.ValidateTokenAsync(dto.IdToken, new TokenValidationParameters
+            {
+                ValidateIssuer    = true,
+                ValidIssuers      = new[]
+                {
+                    $"https://login.microsoftonline.com/{tenantId}/v2.0",
+                    $"https://sts.windows.net/{tenantId}/"
+                },
+                ValidateAudience  = true,
+                ValidAudience     = clientId,
+                ValidateLifetime  = true,
+                IssuerSigningKeys = openIdConfig.SigningKeys,
+            });
+
+            if (!validationResult.IsValid)
+                return Unauthorized(new { error = "Invalid Microsoft token." });
+
+            var claims = validationResult.ClaimsIdentity;
+            var email  = claims.FindFirst("preferred_username")?.Value
+                      ?? claims.FindFirst("email")?.Value
+                      ?? claims.FindFirst(ClaimTypes.Email)?.Value;
+
+            if (string.IsNullOrWhiteSpace(email))
+                return Unauthorized(new { error = "No email found in Microsoft token." });
+
+            var user = await _userManager.FindByEmailAsync(email);
+            if (user == null)
+                return Unauthorized(new { error = "No Saqqara account linked to this Microsoft account. Contact your administrator." });
+
+            if (user.Status != "Approved")
+                return Unauthorized(new { error = "Account is pending approval." });
+
+            await _signInManager.SignInAsync(user, isPersistent: true);
+
+            await _audit.LogAsync(user.Id, "Auth.MicrosoftSso",
+                details: $"Email={email}",
+                actorEmail: email,
+                resultCode: 200);
+
+            return Ok(new { message = "Signed in via Microsoft." });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Microsoft SSO validation failed");
+            return Unauthorized(new { error = "Token validation failed." });
+        }
     }
 
     [Authorize]
