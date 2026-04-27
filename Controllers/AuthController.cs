@@ -11,7 +11,6 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Protocols;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
-using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
@@ -286,7 +285,7 @@ public sealed class AuthController : ControllerBase
 
             var openIdConfig = await configManager.GetConfigurationAsync(CancellationToken.None);
 
-            var handler = new JsonWebTokenHandler();
+            var handler = new Microsoft.IdentityModel.JsonWebTokens.JsonWebTokenHandler();
             var validationResult = await handler.ValidateTokenAsync(dto.IdToken, new TokenValidationParameters
             {
                 ValidateIssuer    = true,
