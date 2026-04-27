@@ -10,6 +10,7 @@ using Beauty.Api.Models.Expenses;
 using Beauty.Api.Models.Moderation;
 using Beauty.Api.Models.Services;
 using Beauty.Api.Models.Subscriptions;
+using Beauty.Api.Models.Gifts;
 using Beauty.Api.Services;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
@@ -84,6 +85,14 @@ public class BeautyDbContext
 
     // ── Expenses ──────────────────────────────────────────────────
     public DbSet<Expense> Expenses => Set<Expense>();
+
+    // ── Gifting system ────────────────────────────────────────────
+    public DbSet<GiftCatalogItem>  GiftCatalog       => Set<GiftCatalogItem>();
+    public DbSet<UserWallet>       UserWallets        => Set<UserWallet>();
+    public DbSet<GiftTransaction>  GiftTransactions   => Set<GiftTransaction>();
+    public DbSet<SlabPurchase>     SlabPurchases      => Set<SlabPurchase>();
+    public DbSet<ArtistBattle>     ArtistBattles      => Set<ArtistBattle>();
+    public DbSet<BattleSignup>     BattleSignups      => Set<BattleSignup>();
 
     // ── Documents ─────────────────────────────────────────────────
     public DbSet<UserDocument> UserDocuments => Set<UserDocument>();

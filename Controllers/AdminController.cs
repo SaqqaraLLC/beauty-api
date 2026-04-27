@@ -1,6 +1,7 @@
 using Beauty.Api.Data;
 using Beauty.Api.Email;
 using Beauty.Api.Models;
+using Beauty.Api.Models.Gifts;
 using Beauty.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -391,6 +392,112 @@ public class AdminController : ControllerBase
             resultCode: 200);
 
         return Ok();
+    }
+
+    // ── Gift Catalog Management ───────────────────────────────────────────────
+
+    public record GiftUpsertRequest(string Name, string Emoji, int SlabCost, bool IsActive = true, int SortOrder = 0);
+
+    [HttpGet("gifts")]
+    public async Task<IActionResult> GetGifts()
+    {
+        var gifts = await _db.GiftCatalog
+            .OrderBy(g => g.SortOrder).ThenBy(g => g.SlabCost)
+            .ToListAsync();
+        return Ok(gifts);
+    }
+
+    [HttpPost("gifts")]
+    public async Task<IActionResult> CreateGift([FromBody] GiftUpsertRequest req)
+    {
+        var gift = new GiftCatalogItem
+        {
+            Name      = req.Name,
+            Emoji     = req.Emoji,
+            SlabCost  = req.SlabCost,
+            IsActive  = req.IsActive,
+            SortOrder = req.SortOrder,
+        };
+        _db.GiftCatalog.Add(gift);
+        await _db.SaveChangesAsync();
+
+        await _audit.LogAsync(ActorId, "Admin.GiftCreated",
+            details: $"Name={req.Name} SlabCost={req.SlabCost}",
+            actorEmail: ActorEmail, resultCode: 201);
+
+        return StatusCode(201, gift);
+    }
+
+    [HttpPut("gifts/{id}")]
+    public async Task<IActionResult> UpdateGift(int id, [FromBody] GiftUpsertRequest req)
+    {
+        var gift = await _db.GiftCatalog.FindAsync(id);
+        if (gift == null) return NotFound();
+
+        gift.Name      = req.Name;
+        gift.Emoji     = req.Emoji;
+        gift.SlabCost  = req.SlabCost;
+        gift.IsActive  = req.IsActive;
+        gift.SortOrder = req.SortOrder;
+
+        await _db.SaveChangesAsync();
+        return Ok(gift);
+    }
+
+    // ── Slab Management ───────────────────────────────────────────────────────
+
+    public record GrantSlabsRequest(string UserId, int Slabs, long AmountCents, string? PaymentReference);
+    public record RefundSlabsRequest(long PurchaseId, string Reason);
+
+    [HttpPost("slabs/grant")]
+    public async Task<IActionResult> GrantSlabs([FromBody] GrantSlabsRequest req)
+    {
+        var wallet = await WalletController.GetOrCreateWalletAsync(req.UserId, _db);
+        wallet.Slabs    += req.Slabs;
+        wallet.UpdatedAt = DateTime.UtcNow;
+
+        var purchase = new SlabPurchase
+        {
+            UserId           = req.UserId,
+            SlabsGranted     = req.Slabs,
+            AmountCents      = req.AmountCents,
+            PaymentReference = req.PaymentReference,
+            Status           = SlabPurchaseStatus.Completed,
+        };
+        _db.SlabPurchases.Add(purchase);
+        await _db.SaveChangesAsync();
+
+        await _audit.LogAsync(ActorId, "Admin.SlabsGranted",
+            details: $"UserId={req.UserId} Slabs={req.Slabs} AmountCents={req.AmountCents}",
+            actorEmail: ActorEmail, resultCode: 200);
+
+        return Ok(new { purchaseId = purchase.Id, slabs = wallet.Slabs });
+    }
+
+    [HttpPost("slabs/refund")]
+    public async Task<IActionResult> RefundSlabs([FromBody] RefundSlabsRequest req)
+    {
+        var purchase = await _db.SlabPurchases.FindAsync(req.PurchaseId);
+        if (purchase == null) return NotFound();
+        if (purchase.Status == SlabPurchaseStatus.Refunded)
+            return BadRequest(new { error = "Already refunded." });
+
+        var wallet = await WalletController.GetOrCreateWalletAsync(purchase.UserId, _db);
+        var slabsToRemove = Math.Min(purchase.SlabsGranted, wallet.Slabs);
+        wallet.Slabs    -= slabsToRemove;
+        wallet.UpdatedAt = DateTime.UtcNow;
+
+        purchase.Status      = SlabPurchaseStatus.Refunded;
+        purchase.RefundReason = req.Reason;
+        purchase.RefundedAt  = DateTime.UtcNow;
+
+        await _db.SaveChangesAsync();
+
+        await _audit.LogAsync(ActorId, "Admin.SlabsRefunded",
+            details: $"PurchaseId={req.PurchaseId} SlabsRemoved={slabsToRemove} Reason={req.Reason}",
+            actorEmail: ActorEmail, resultCode: 200);
+
+        return Ok(new { refunded = true, slabsRemoved = slabsToRemove });
     }
 
     public record RejectDocumentRequest(string Reason);
