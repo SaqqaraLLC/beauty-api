@@ -135,6 +135,10 @@ builder.Services
         options.SignIn.RequireConfirmedAccount = false;
         options.Tokens.AuthenticatorTokenProvider =
             TokenOptions.DefaultAuthenticatorProvider;
+
+        // Allow apostrophes and all standard email characters in usernames
+        options.User.AllowedUserNameCharacters =
+            "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._@+'";
     })
     .AddRoles<IdentityRole>()
     .AddEntityFrameworkStores<BeautyDbContext>()
