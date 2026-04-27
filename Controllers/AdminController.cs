@@ -323,6 +323,76 @@ public class AdminController : ControllerBase
         return Ok(all);
     }
 
+    // ── Change Role ───────────────────────────────────────────────────────────
+
+    public record ChangeRoleRequest(string Role);
+
+    [HttpPost("change-role/{id}")]
+    public async Task<IActionResult> ChangeRole(string id, [FromBody] ChangeRoleRequest req)
+    {
+        var allowedRoles = new[] { "Staff", "Admin" };
+        if (!allowedRoles.Contains(req.Role))
+            return BadRequest(new { error = "Role must be Staff or Admin." });
+
+        if (id == ActorId)
+            return BadRequest(new { error = "Cannot change your own role." });
+
+        var user = await _userManager.FindByIdAsync(id);
+        if (user == null) return NotFound();
+
+        if (req.Role != "Admin" && await _userManager.IsInRoleAsync(user, "Admin"))
+        {
+            var admins = await _userManager.GetUsersInRoleAsync("Admin");
+            if (admins.Count <= 1)
+                return BadRequest(new { error = "Cannot remove the last admin." });
+        }
+
+        var currentRoles = await _userManager.GetRolesAsync(user);
+        var toRemove = currentRoles.Where(r => allowedRoles.Contains(r)).ToList();
+        if (toRemove.Any())
+            await _userManager.RemoveFromRolesAsync(user, toRemove);
+        await _userManager.AddToRoleAsync(user, req.Role);
+
+        await _audit.LogAsync(ActorId, "Admin.RoleChanged",
+            targetEntity: $"User/{id}",
+            details: $"Email={user.Email} NewRole={req.Role}",
+            actorEmail: ActorEmail,
+            resultCode: 200);
+
+        return Ok(new { userId = id, role = req.Role });
+    }
+
+    // ── Remove Team Member ────────────────────────────────────────────────────
+
+    [HttpDelete("team-members/{id}")]
+    public async Task<IActionResult> RemoveTeamMember(string id)
+    {
+        if (id == ActorId)
+            return BadRequest(new { error = "Cannot remove your own account." });
+
+        var user = await _userManager.FindByIdAsync(id);
+        if (user == null) return NotFound();
+
+        if (await _userManager.IsInRoleAsync(user, "Admin"))
+        {
+            var admins = await _userManager.GetUsersInRoleAsync("Admin");
+            if (admins.Count <= 1)
+                return BadRequest(new { error = "Cannot remove the last admin." });
+        }
+
+        var result = await _userManager.DeleteAsync(user);
+        if (!result.Succeeded)
+            return BadRequest(new { errors = result.Errors.Select(e => e.Description) });
+
+        await _audit.LogAsync(ActorId, "Admin.TeamMemberRemoved",
+            targetEntity: $"User/{id}",
+            details: $"Email={user.Email}",
+            actorEmail: ActorEmail,
+            resultCode: 200);
+
+        return Ok();
+    }
+
     public record RejectDocumentRequest(string Reason);
     public record RejectRequest(string? Reason);
 }
