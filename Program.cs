@@ -252,7 +252,6 @@ builder.Services.AddScoped<IWebhookService, WebhookService>();
 // Controllers & Swagger
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
 
 // Logging
 builder.Logging.ClearProviders();
@@ -268,7 +267,7 @@ builder.Services.AddSwaggerGen(options =>
 {
     options.SwaggerDoc("v1", new OpenApiInfo
     {
-        Title = "My API",
+        Title = "Saqqara API",
         Version = "v1"
     });
 
@@ -453,11 +452,8 @@ catch (Exception ex)
 // =================================================
 // 5. REQUEST PIPELINE (LOCKS LIVE HERE)
 // =================================================
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
+app.UseSwagger();
+app.UseSwaggerUI();
 
 // Must sit before UseCors so CORS headers survive unhandled 500s
 app.Use(async (ctx, next) =>
