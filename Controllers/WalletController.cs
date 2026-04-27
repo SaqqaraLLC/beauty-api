@@ -37,7 +37,7 @@ public class WalletController : ControllerBase
         {
             slabs  = wallet.Slabs,
             pieces = wallet.Pieces,
-            pieceSlabEquivalent = wallet.Pieces / 4,   // how many slabs pieces are worth
+            pieceSlabEquivalent = Math.Floor(wallet.Pieces / 4m),
         });
     }
 
@@ -46,16 +46,21 @@ public class WalletController : ControllerBase
     [HttpPost("exchange-pieces")]
     public async Task<IActionResult> ExchangePieces([FromBody] ExchangeRequest req)
     {
-        if (req.Pieces <= 0 || req.Pieces % 4 != 0)
-            return BadRequest(new { error = "Pieces must be a positive multiple of 4." });
+        if (req.Pieces < 4m)
+            return BadRequest(new { error = "Minimum exchange is 4 pieces." });
+
+        // Slabs gained = floor(pieces / 4) — always whole slabs
+        var slabsGained = (int)Math.Floor(req.Pieces / 4m);
+        if (slabsGained < 1)
+            return BadRequest(new { error = "Not enough pieces to earn a full slab." });
 
         var wallet = await GetOrCreateWalletAsync(UserId);
-
         if (wallet.Pieces < req.Pieces)
             return BadRequest(new { error = "Insufficient pieces." });
 
-        var slabsGained = req.Pieces / 4;
-        wallet.Pieces   -= req.Pieces;
+        // Deduct exactly the pieces that convert to whole slabs
+        decimal piecesUsed = slabsGained * 4m;
+        wallet.Pieces   -= piecesUsed;
         wallet.Slabs    += slabsGained;
         wallet.UpdatedAt = DateTime.UtcNow;
 
@@ -114,6 +119,48 @@ public class WalletController : ControllerBase
         return Ok(purchases);
     }
 
+    // ── Gift earnings history (artist: gifts received as pieces) ──
+
+    [HttpGet("earnings")]
+    public async Task<IActionResult> GetEarnings([FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+    {
+        pageSize = Math.Clamp(pageSize, 1, 50);
+
+        var received = await _db.GiftTransactions
+            .Include(g => g.Gift)
+            .Where(g => g.RecipientArtistUserId == UserId)
+            .OrderByDescending(g => g.CreatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(g => new
+            {
+                g.Id,
+                gift         = g.Gift.Name,
+                emoji        = g.Gift.Emoji,
+                g.SlabsSpent,
+                g.ArtistSlabs,
+                piecesEarned = g.PiecesEarned,  // 1× normal, 1.5× during battles
+                g.IsBattleGift,
+                g.BonusSlabs,
+                g.IncludedInPayout,
+                g.CreatedAt,
+            })
+            .ToListAsync();
+
+        var totals = await _db.GiftTransactions
+            .Where(g => g.RecipientArtistUserId == UserId)
+            .GroupBy(_ => 1)
+            .Select(g => new
+            {
+                totalPiecesEarned = g.Sum(x => x.PiecesEarned),
+                totalSlabsEquiv   = g.Sum(x => x.ArtistSlabs),
+                unpaidCount       = g.Count(x => !x.IncludedInPayout),
+            })
+            .FirstOrDefaultAsync();
+
+        return Ok(new { totals, history = received });
+    }
+
     // ── Internal helper ────────────────────────────────────────────
 
     public static async Task<UserWallet> GetOrCreateWalletAsync(string userId, BeautyDbContext db)
@@ -131,5 +178,5 @@ public class WalletController : ControllerBase
     private Task<UserWallet> GetOrCreateWalletAsync(string userId)
         => GetOrCreateWalletAsync(userId, _db);
 
-    public record ExchangeRequest(int Pieces);
+    public record ExchangeRequest(decimal Pieces);
 }

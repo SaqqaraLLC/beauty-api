@@ -93,6 +93,8 @@ public class BeautyDbContext
     public DbSet<SlabPurchase>     SlabPurchases      => Set<SlabPurchase>();
     public DbSet<ArtistBattle>     ArtistBattles      => Set<ArtistBattle>();
     public DbSet<BattleSignup>     BattleSignups      => Set<BattleSignup>();
+    public DbSet<CollabSession>    CollabSessions     => Set<CollabSession>();
+    public DbSet<CollabParticipant> CollabParticipants => Set<CollabParticipant>();
 
     // ── Documents ─────────────────────────────────────────────────
     public DbSet<UserDocument> UserDocuments => Set<UserDocument>();

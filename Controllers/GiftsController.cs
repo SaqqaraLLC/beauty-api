@@ -1,12 +1,14 @@
 using Beauty.Api.Data;
 using Beauty.Api.Models;
 using Beauty.Api.Models.Gifts;
+using Beauty.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
+using System.Text.Json;
 
 namespace Beauty.Api.Controllers;
 
@@ -17,11 +19,13 @@ public class GiftsController : ControllerBase
 {
     private readonly BeautyDbContext _db;
     private readonly UserManager<ApplicationUser> _userManager;
+    private readonly GiftBroadcastService _broadcast;
 
-    public GiftsController(BeautyDbContext db, UserManager<ApplicationUser> userManager)
+    public GiftsController(BeautyDbContext db, UserManager<ApplicationUser> userManager, GiftBroadcastService broadcast)
     {
-        _db = db;
+        _db        = db;
         _userManager = userManager;
+        _broadcast = broadcast;
     }
 
     private string? UserId => User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -76,8 +80,6 @@ public class GiftsController : ControllerBase
             paidWithPieces = true;
         }
 
-        // Gifter earns pieces equal to slabs spent (encourages gifting)
-        wallet.Pieces   += slabCost;
         wallet.UpdatedAt = DateTime.UtcNow;
 
         // Battle context
@@ -103,6 +105,16 @@ public class GiftsController : ControllerBase
             }
         }
 
+        // Normal: artist earns slabCost pieces. Battle: 1.5× (e.g. 5 slabs → 7.5 pieces exactly).
+        decimal artistPieces = battle != null ? slabCost * 1.5m : slabCost;
+
+        var artistWallet = await WalletController.GetOrCreateWalletAsync(req.TargetArtistUserId, _db);
+        artistWallet.Pieces   += artistPieces;
+        artistWallet.UpdatedAt = DateTime.UtcNow;
+
+        // Slab-equivalent for payout reporting
+        decimal artistSlabs = artistPieces / 4m;
+
         var tx = new GiftTransaction
         {
             SenderId              = UserId!,
@@ -111,7 +123,8 @@ public class GiftsController : ControllerBase
             GiftId                = req.GiftId,
             SlabsSpent            = slabCost,
             PaidWithPieces        = paidWithPieces,
-            PiecesEarned          = slabCost,
+            PiecesEarned          = artistPieces,
+            ArtistSlabs           = artistSlabs,
             IsBattleGift          = battle != null,
             BattleId              = battle?.Id,
             BonusSlabs            = bonusSlabs,
@@ -120,14 +133,21 @@ public class GiftsController : ControllerBase
         _db.GiftTransactions.Add(tx);
         await _db.SaveChangesAsync();
 
+        // Push real-time event to all SSE subscribers watching this stream
+        _broadcast.Broadcast(req.StreamId, new GiftEvent(
+            Emoji:       gift.Emoji,
+            GiftName:    gift.Name,
+            SenderId:    UserId!,
+            IsBattleGift: battle != null
+        ));
+
         return Ok(new
         {
-            success       = true,
-            gift          = new { gift.Name, gift.Emoji },
-            slabsSpent    = slabCost,
-            piecesEarned  = slabCost,
+            success    = true,
+            gift       = new { gift.Name, gift.Emoji },
+            slabsSpent = slabCost,
             bonusSlabs,
-            wallet        = new { wallet.Slabs, wallet.Pieces },
+            wallet     = new { wallet.Slabs, wallet.Pieces },
         });
     }
 
@@ -171,13 +191,45 @@ public class GiftsController : ControllerBase
             .GroupBy(_ => 1)
             .Select(g => new
             {
-                totalSlabs  = g.Sum(x => x.SlabsSpent + x.BonusSlabs),
-                giftCount   = g.Count(),
+                artistSlabs   = g.Sum(x => x.ArtistSlabs),
+                totalGifted   = g.Sum(x => x.SlabsSpent),
+                giftCount     = g.Count(),
                 pendingPayout = g.Count(x => !x.IncludedInPayout),
             })
             .FirstOrDefaultAsync();
 
-        return Ok(summary ?? new { totalSlabs = 0, giftCount = 0, pendingPayout = 0 });
+        return Ok(summary ?? new { artistSlabs = 0m, totalGifted = 0, giftCount = 0, pendingPayout = 0 });
+    }
+
+    // ── Real-time SSE feed for a stream ───────────────────────────
+
+    [HttpGet("live/{streamId}")]
+    [AllowAnonymous]
+    public async Task LiveFeed(int streamId, CancellationToken ct)
+    {
+        Response.Headers["Content-Type"]  = "text/event-stream";
+        Response.Headers["Cache-Control"] = "no-cache";
+        Response.Headers["X-Accel-Buffering"] = "no";
+
+        // Send a keepalive comment every 20 s to prevent proxy timeouts
+        using var keepaliveTimer = new PeriodicTimer(TimeSpan.FromSeconds(20));
+        var keepaliveTask = Task.Run(async () =>
+        {
+            while (!ct.IsCancellationRequested && await keepaliveTimer.WaitForNextTickAsync(ct).ConfigureAwait(false))
+            {
+                await Response.WriteAsync(": keepalive\n\n", ct).ConfigureAwait(false);
+                await Response.Body.FlushAsync(ct).ConfigureAwait(false);
+            }
+        }, ct);
+
+        await foreach (var evt in _broadcast.SubscribeAsync(streamId, ct))
+        {
+            var json = JsonSerializer.Serialize(evt, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+            await Response.WriteAsync($"data: {json}\n\n", ct);
+            await Response.Body.FlushAsync(ct);
+        }
+
+        await keepaliveTask.ConfigureAwait(false);
     }
 
     public record SendGiftRequest(

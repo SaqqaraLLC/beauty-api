@@ -4,6 +4,7 @@ using Beauty.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Beauty.Api.Migrations
 {
     [DbContext(typeof(BeautyDbContext))]
-    partial class BeautyDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260427093952_DecimalPieces")]
+    partial class DecimalPieces
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1837,9 +1840,6 @@ namespace Beauty.Api.Migrations
                         .IsRequired()
                         .HasColumnType("longtext");
 
-                    b.Property<double>("BattleScore")
-                        .HasColumnType("double");
-
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
 
@@ -1855,68 +1855,6 @@ namespace Beauty.Api.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("BattleSignups");
-                });
-
-            modelBuilder.Entity("Beauty.Api.Models.Gifts.CollabParticipant", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<long>("Id"));
-
-                    b.Property<string>("ArtistUserId")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.Property<long>("CollabSessionId")
-                        .HasColumnType("bigint");
-
-                    b.Property<DateTime>("InvitedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<DateTime?>("JoinedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<int>("Status")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CollabSessionId");
-
-                    b.ToTable("CollabParticipants");
-                });
-
-            modelBuilder.Entity("Beauty.Api.Models.Gifts.CollabSession", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<long>("Id"));
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<DateTime?>("EndedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("HostArtistUserId")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.Property<int>("Status")
-                        .HasColumnType("int");
-
-                    b.Property<int>("StreamId")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("StreamId");
-
-                    b.ToTable("CollabSessions");
                 });
 
             modelBuilder.Entity("Beauty.Api.Models.Gifts.GiftCatalogItem", b =>
@@ -3190,28 +3128,6 @@ namespace Beauty.Api.Migrations
                     b.Navigation("ArtistProfile");
                 });
 
-            modelBuilder.Entity("Beauty.Api.Models.Gifts.CollabParticipant", b =>
-                {
-                    b.HasOne("Beauty.Api.Models.Gifts.CollabSession", "CollabSession")
-                        .WithMany("Participants")
-                        .HasForeignKey("CollabSessionId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("CollabSession");
-                });
-
-            modelBuilder.Entity("Beauty.Api.Models.Gifts.CollabSession", b =>
-                {
-                    b.HasOne("Beauty.Api.Models.Enterprise.Stream", "Stream")
-                        .WithMany()
-                        .HasForeignKey("StreamId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Stream");
-                });
-
             modelBuilder.Entity("Beauty.Api.Models.Gifts.GiftTransaction", b =>
                 {
                     b.HasOne("Beauty.Api.Models.Gifts.ArtistBattle", null)
@@ -3458,11 +3374,6 @@ namespace Beauty.Api.Migrations
             modelBuilder.Entity("Beauty.Api.Models.Gifts.ArtistBattle", b =>
                 {
                     b.Navigation("Gifts");
-                });
-
-            modelBuilder.Entity("Beauty.Api.Models.Gifts.CollabSession", b =>
-                {
-                    b.Navigation("Participants");
                 });
 
             modelBuilder.Entity("Beauty.Api.Models.Payments.WpPayment", b =>

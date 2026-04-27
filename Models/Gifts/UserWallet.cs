@@ -14,8 +14,8 @@ public class UserWallet
     // Purchased currency — spent on gifts
     public int Slabs { get; set; } = 0;
 
-    // Earned back from gifting — 4 pieces = 1 slab purchasing power
-    public int Pieces { get; set; } = 0;
+    // Earned from gifts — 4 pieces = 1 slab; stored as decimal (battles award 1.5× e.g. 7.5)
+    public decimal Pieces { get; set; } = 0m;
 
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }

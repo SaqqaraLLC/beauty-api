@@ -24,14 +24,17 @@ public class GiftTransaction
     public int SlabsSpent { get; set; }
     public bool PaidWithPieces { get; set; } = false;
 
-    // Pieces earned back by the gifter (equals SlabsSpent)
-    public int PiecesEarned { get; set; }
+    // Pieces credited to artist (1× normal, 1.5× during battles — can be fractional e.g. 7.5)
+    public decimal PiecesEarned { get; set; }
+
+    // Slab-equivalent for payout reporting (PiecesEarned / 4)
+    public decimal ArtistSlabs { get; set; }
 
     // Battle context
     public bool IsBattleGift { get; set; } = false;
     public long? BattleId { get; set; }
 
-    // 25% bonus slab value added to artist earnings during battles
+    // 25% bonus slab value — goes entirely to Saqqara (not split with artist)
     public int BonusSlabs { get; set; } = 0;
 
     // Payout tracking

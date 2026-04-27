@@ -58,6 +58,9 @@ public class BattleSignup
 
     public long? MatchedBattleId { get; set; }
 
+    // Composite matchmaking score — tenure + profit + popularity
+    public double BattleScore { get; set; } = 0;
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 

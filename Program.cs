@@ -238,6 +238,13 @@ builder.Services.Configure<EmailOptions>(
 // Blob Storage
 builder.Services.AddSingleton<Beauty.Api.Services.BlobStorageService>();
 
+// Real-time gift broadcast (SSE)
+builder.Services.AddSingleton<Beauty.Api.Services.GiftBroadcastService>();
+
+// Battle matchmaking + auto-resolve
+builder.Services.AddScoped<Beauty.Api.Services.BattleMatchmakingService>();
+builder.Services.AddHostedService<Beauty.Api.Services.BattleAutoResolveService>();
+
 builder.Services.AddScoped<IEmailSender, GraphEmailSender>();
 builder.Services.AddSingleton<ITemplateRenderer, FileTemplateRenderer>();
 builder.Services.AddScoped<EmailTemplateService>();

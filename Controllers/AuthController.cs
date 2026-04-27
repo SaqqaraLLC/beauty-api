@@ -244,7 +244,9 @@ public sealed class AuthController : ControllerBase
         var token = await _userManager.GeneratePasswordResetTokenAsync(user);
         var resetUrl = $"{_config["Brand:PrimaryResetUrl"]}?email={Uri.EscapeDataString(user.Email!)}&token={Uri.EscapeDataString(token)}";
 
-        await emailSvc.SendResetAsync(user.Email!, user.Email!, resetUrl);
+        try { await emailSvc.SendResetAsync(user.Email!, user.Email!, resetUrl); }
+        catch (Exception ex) { _logger.LogError(ex, "Failed to send password reset email to {Email}", user.Email); }
+
         return Ok();
     }
 
