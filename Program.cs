@@ -244,6 +244,11 @@ builder.Services.AddScoped<InvoiceGeneratorService>();
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<IWorldpayService, WorldpayService>();
 
+// Power Automate webhooks
+builder.Services.Configure<PowerAutomateSettings>(
+    builder.Configuration.GetSection("PowerAutomate"));
+builder.Services.AddScoped<IWebhookService, WebhookService>();
+
 // Controllers & Swagger
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();

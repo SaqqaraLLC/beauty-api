@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.Options;
 using Beauty.Api.Data;
 using Beauty.Api.Email;
 using Beauty.Api.Models;
@@ -12,17 +13,23 @@ public class UserApprovalService
     private readonly BeautyDbContext _db;
     private readonly RoleManager<IdentityRole> _roleManager;
     private readonly EmailTemplateService _email;
+    private readonly IWebhookService _webhook;
+    private readonly PowerAutomateSettings _pa;
 
     public UserApprovalService(
         UserManager<ApplicationUser> userManager,
         RoleManager<IdentityRole> roleManager,
         BeautyDbContext db,
-        EmailTemplateService email)
+        EmailTemplateService email,
+        IWebhookService webhook,
+        IOptions<PowerAutomateSettings> pa)
     {
         _userManager = userManager;
         _roleManager = roleManager;
         _db = db;
         _email = email;
+        _webhook = webhook;
+        _pa = pa.Value;
     }
 
     public async Task ApproveUserAsync(ApplicationUser user, string adminId)
@@ -53,6 +60,19 @@ public class UserApprovalService
 
         // Send approval email (fire and forget)
         _ = _email.SendApprovedAsync(user.Email!, role).ContinueWith(_ => { });
+
+        // Notify Power Automate when an artist is approved
+        if (role.Equals("Artist", StringComparison.OrdinalIgnoreCase))
+        {
+            _ = _webhook.FireAsync(_pa.ArtistApprovedUrl, new
+            {
+                event_type  = "artist.approved",
+                artist_id   = user.ArtistId ?? 0,
+                artist_name = $"{user.FirstName} {user.LastName}".Trim(),
+                email       = user.Email,
+                approved_at = DateTime.UtcNow
+            });
+        }
     }
 
     public async Task RejectUserAsync(ApplicationUser user, string adminId, string reason)

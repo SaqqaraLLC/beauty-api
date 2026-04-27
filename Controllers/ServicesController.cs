@@ -1,5 +1,6 @@
 using Beauty.Api.Data;
 using Beauty.Api.Models;
+using Beauty.Api.Models.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -26,6 +27,8 @@ public class ServicesController : ControllerBase
             .AsNoTracking()
             .Include(s => s.Category)
             .Include(s => s.AddOns.Where(a => a.IsActive).OrderBy(a => a.SortOrder))
+            .Include(s => s.RequiredProducts.Where(r => r.IsActive).OrderBy(r => r.SortOrder))
+                .ThenInclude(r => r.Product)
             .AsQueryable();
 
         if (activeOnly != false)
@@ -48,6 +51,8 @@ public class ServicesController : ControllerBase
             .AsNoTracking()
             .Include(s => s.Category)
             .Include(s => s.AddOns.Where(a => a.IsActive).OrderBy(a => a.SortOrder))
+            .Include(s => s.RequiredProducts.Where(r => r.IsActive).OrderBy(r => r.SortOrder))
+                .ThenInclude(r => r.Product)
             .FirstOrDefaultAsync(s => s.Id == id);
 
         if (service is null) return NotFound();
@@ -187,6 +192,90 @@ public class ServicesController : ControllerBase
         return Ok(new { addOnId, isActive = false });
     }
 
+    // ── Required Products ──────────────────────────────────────────────────
+    // Every service must have at least one required product before it can be Active.
+
+    public record RequiredProductReq(
+        int     ProductId,
+        int     Quantity,
+        int?    SalePriceCents,
+        string? Notes,
+        int     SortOrder);
+
+    [HttpGet("{id:long}/required-products")]
+    public async Task<IActionResult> GetRequiredProducts(long id)
+    {
+        var items = await _db.ServiceRequiredProducts
+            .AsNoTracking()
+            .Where(r => r.ServiceId == id && r.IsActive)
+            .Include(r => r.Product)
+            .OrderBy(r => r.SortOrder)
+            .ToListAsync();
+
+        return Ok(items.Select(MapRequiredProduct));
+    }
+
+    [HttpPost("{id:long}/required-products")]
+    [Authorize(Roles = "Admin,Staff")]
+    public async Task<IActionResult> AddRequiredProduct(long id, [FromBody] RequiredProductReq req)
+    {
+        if (!await _db.Services.AnyAsync(s => s.Id == id)) return NotFound();
+        if (!await _db.Products.AnyAsync(p => p.ProductId == req.ProductId))
+            return BadRequest(new { error = "Product not found in catalog." });
+
+        var item = new ServiceRequiredProduct
+        {
+            ServiceId      = id,
+            ProductId      = req.ProductId,
+            Quantity       = req.Quantity < 1 ? 1 : req.Quantity,
+            SalePriceCents = req.SalePriceCents,
+            Notes          = req.Notes,
+            SortOrder      = req.SortOrder,
+            IsActive       = true
+        };
+
+        _db.ServiceRequiredProducts.Add(item);
+        await _db.SaveChangesAsync();
+        return Ok(MapRequiredProduct(item));
+    }
+
+    [HttpPut("{id:long}/required-products/{itemId:long}")]
+    [Authorize(Roles = "Admin,Staff")]
+    public async Task<IActionResult> UpdateRequiredProduct(long id, long itemId, [FromBody] RequiredProductReq req)
+    {
+        var item = await _db.ServiceRequiredProducts
+            .FirstOrDefaultAsync(r => r.Id == itemId && r.ServiceId == id);
+        if (item is null) return NotFound();
+
+        item.ProductId      = req.ProductId;
+        item.Quantity       = req.Quantity < 1 ? 1 : req.Quantity;
+        item.SalePriceCents = req.SalePriceCents;
+        item.Notes          = req.Notes;
+        item.SortOrder      = req.SortOrder;
+
+        await _db.SaveChangesAsync();
+        return Ok(MapRequiredProduct(item));
+    }
+
+    [HttpDelete("{id:long}/required-products/{itemId:long}")]
+    [Authorize(Roles = "Admin,Staff")]
+    public async Task<IActionResult> RemoveRequiredProduct(long id, long itemId)
+    {
+        var item = await _db.ServiceRequiredProducts
+            .FirstOrDefaultAsync(r => r.Id == itemId && r.ServiceId == id);
+        if (item is null) return NotFound();
+
+        // Prevent removing the last required product — a service must always have at least one
+        var remaining = await _db.ServiceRequiredProducts
+            .CountAsync(r => r.ServiceId == id && r.IsActive && r.Id != itemId);
+        if (remaining == 0)
+            return BadRequest(new { error = "A service must have at least one required product. Add another before removing this one." });
+
+        item.IsActive = false;
+        await _db.SaveChangesAsync();
+        return Ok(new { itemId, isActive = false });
+    }
+
     // ── Categories ─────────────────────────────────────────────────────────────
 
     [HttpGet("categories")]
@@ -245,17 +334,29 @@ public class ServicesController : ControllerBase
 
     // ── Mappers ────────────────────────────────────────────────────────────────
 
-    private static object MapService(Service s) => new
+    private static object MapService(Service s)
     {
-        s.Id,
-        s.Name,
-        s.Description,
-        s.Price,
-        s.DurationMinutes,
-        s.Active,
-        Category = s.Category is null ? null : new { s.Category.Id, s.Category.Key, s.Category.DisplayName },
-        AddOns   = s.AddOns.Select(MapAddOn)
-    };
+        var kitItems = s.RequiredProducts.Where(r => r.IsActive).Select(MapRequiredProduct).ToList();
+        var kitTotalCents = s.RequiredProducts
+            .Where(r => r.IsActive)
+            .Sum(r => (r.SalePriceCents ?? r.Product?.BilledPriceCents ?? 0) * r.Quantity);
+
+        return new
+        {
+            s.Id,
+            s.Name,
+            s.Description,
+            s.Price,
+            s.DurationMinutes,
+            s.Active,
+            Category         = s.Category is null ? null : new { s.Category.Id, s.Category.Key, s.Category.DisplayName },
+            AddOns           = s.AddOns.Select(MapAddOn),
+            RequiredProducts = kitItems,
+            RequiredProductCount = kitItems.Count,
+            KitTotalCents    = kitTotalCents,
+            TotalWithKitCents = (int)(s.Price * 100) + kitTotalCents
+        };
+    }
 
     private static object MapAddOn(ServiceAddOn a) => new
     {
@@ -268,4 +369,24 @@ public class ServicesController : ControllerBase
         a.SortOrder,
         a.IsActive
     };
+
+    private static object MapRequiredProduct(ServiceRequiredProduct r)
+    {
+        var unitPriceCents = r.SalePriceCents ?? r.Product?.BilledPriceCents ?? 0;
+        return new
+        {
+            r.Id,
+            r.ServiceId,
+            r.ProductId,
+            ProductName      = r.Product?.Name,
+            ProductBrand     = r.Product?.Brand,
+            WholesaleCents   = r.Product?.WholesalePriceCents ?? 0,
+            UnitPriceCents   = unitPriceCents,
+            r.Quantity,
+            LineTotalCents   = unitPriceCents * r.Quantity,
+            r.Notes,
+            r.SortOrder,
+            r.IsActive
+        };
+    }
 }

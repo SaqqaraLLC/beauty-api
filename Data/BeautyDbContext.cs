@@ -6,6 +6,10 @@ using Beauty.Api.Models.Enterprise;
 using Beauty.Api.Models.Locations;
 using Beauty.Api.Models.Payments;
 using Beauty.Api.Models.Payouts;
+using Beauty.Api.Models.Expenses;
+using Beauty.Api.Models.Moderation;
+using Beauty.Api.Models.Services;
+using Beauty.Api.Models.Subscriptions;
 using Beauty.Api.Services;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
@@ -40,8 +44,9 @@ public class BeautyDbContext
     public DbSet<StreamQuotaOverride> StreamQuotaOverrides => Set<StreamQuotaOverride>();
 
     // ── Enterprise — canonical tenant entities ─────────────────────
-    public DbSet<EnterpriseAccount>  EnterpriseAccounts  => Set<EnterpriseAccount>();
-    public DbSet<EnterpriseUser>     EnterpriseUsers     => Set<EnterpriseUser>();
+    public DbSet<EnterpriseAccount>         EnterpriseAccounts         => Set<EnterpriseAccount>();
+    public DbSet<EnterpriseContractHistory> EnterpriseContractHistories => Set<EnterpriseContractHistory>();
+    public DbSet<EnterpriseUser>            EnterpriseUsers             => Set<EnterpriseUser>();
     public DbSet<EnterpriseRole>     EnterpriseRoles     => Set<EnterpriseRole>();
     public DbSet<Permission>         Permissions         => Set<Permission>();
     public DbSet<RolePermission>     RolePermissions     => Set<RolePermission>();
@@ -69,6 +74,16 @@ public class BeautyDbContext
     // ── Payouts ───────────────────────────────────────────────────
     public DbSet<PayoutCycle>       PayoutCycles       => Set<PayoutCycle>();
     public DbSet<ProviderPayoutLine> ProviderPayoutLines => Set<ProviderPayoutLine>();
+
+    // ── Moderation ────────────────────────────────────────────────
+    public DbSet<StreamFlag>              StreamFlags              => Set<StreamFlag>();
+    public DbSet<ServiceRequiredProduct>  ServiceRequiredProducts  => Set<ServiceRequiredProduct>();
+
+    // ── Artist Subscriptions ───────────────────────────────────────
+    public DbSet<ArtistSubscription> ArtistSubscriptions => Set<ArtistSubscription>();
+
+    // ── Expenses ──────────────────────────────────────────────────
+    public DbSet<Expense> Expenses => Set<Expense>();
 
     // ── Documents ─────────────────────────────────────────────────
     public DbSet<UserDocument> UserDocuments => Set<UserDocument>();
@@ -368,8 +383,33 @@ public class BeautyDbContext
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Name).HasMaxLength(300).IsRequired();
             entity.Property(x => x.Status).HasMaxLength(50).IsRequired();
-            entity.Property(x => x.BillingTier).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.PlanTier).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.BillingCycle).HasConversion<string>().HasMaxLength(20);
+            entity.Property(x => x.ContractAmount).HasColumnType("decimal(12,2)");
+            entity.HasMany(x => x.ContractHistory)
+                  .WithOne(h => h.EnterpriseAccount)
+                  .HasForeignKey(h => h.EnterpriseAccountId)
+                  .OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(x => x.Status);
+            entity.HasIndex(x => x.ContractRenewalDate);
+        });
+
+        // ── EnterpriseContractHistory ─────────────────────────────
+        builder.Entity<EnterpriseContractHistory>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.ChangeType).HasMaxLength(50).IsRequired();
+            entity.Property(x => x.PreviousTier).HasMaxLength(100);
+            entity.Property(x => x.NewTier).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.PreviousBillingCycle).HasMaxLength(20);
+            entity.Property(x => x.NewBillingCycle).HasMaxLength(20).IsRequired();
+            entity.Property(x => x.PreviousContractAmount).HasColumnType("decimal(12,2)");
+            entity.Property(x => x.NewContractAmount).HasColumnType("decimal(12,2)");
+            entity.Property(x => x.Notes).HasMaxLength(1000);
+            entity.Property(x => x.ChangedByUserId).HasMaxLength(450);
+            entity.Property(x => x.ChangedByName).HasMaxLength(200);
+            entity.HasIndex(x => x.EnterpriseAccountId);
+            entity.HasIndex(x => x.EffectiveDate);
         });
 
         // ── EnterpriseRole ────────────────────────────────────────
@@ -751,6 +791,76 @@ public class BeautyDbContext
             entity.Property(x => x.Price).HasColumnType("decimal(10,2)");
             entity.HasIndex(x => new { x.ServiceId, x.IsActive });
             entity.HasIndex(x => x.SortOrder);
+        });
+
+        // ── StreamFlag ────────────────────────────────────────────────
+        builder.Entity<StreamFlag>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Reason).HasMaxLength(500).IsRequired();
+            entity.Property(x => x.FlaggedByUserId).HasMaxLength(450);
+            entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
+            entity.Property(x => x.Action).HasMaxLength(50);
+            entity.Property(x => x.ReviewedByUserId).HasMaxLength(450);
+            entity.Property(x => x.ReviewedByName).HasMaxLength(200);
+            entity.Property(x => x.ReviewNotes).HasMaxLength(1000);
+            entity.HasOne(x => x.Stream)
+                  .WithMany()
+                  .HasForeignKey(x => x.StreamId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(x => x.StreamId);
+            entity.HasIndex(x => x.Status);
+            entity.HasIndex(x => x.FlaggedAt);
+        });
+
+        // ── ServiceRequiredProduct ────────────────────────────────────
+        builder.Entity<ServiceRequiredProduct>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Notes).HasMaxLength(500);
+            entity.HasOne(x => x.Service)
+                  .WithMany(s => s.RequiredProducts)
+                  .HasForeignKey(x => x.ServiceId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.Product)
+                  .WithMany()
+                  .HasForeignKey(x => x.ProductId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(x => new { x.ServiceId, x.IsActive });
+            entity.HasIndex(x => x.ProductId);
+        });
+
+        // ── Expense ───────────────────────────────────────────────────
+        builder.Entity<Expense>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.SubmittedByUserId).HasMaxLength(450).IsRequired();
+            entity.Property(x => x.SubmittedByName).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.Category).HasConversion<string>().HasMaxLength(20);
+            entity.Property(x => x.Description).HasMaxLength(500).IsRequired();
+            entity.Property(x => x.ReceiptUrl).HasMaxLength(1000);
+            entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
+            entity.Property(x => x.ReviewedByUserId).HasMaxLength(450);
+            entity.Property(x => x.ReviewedByName).HasMaxLength(200);
+            entity.Property(x => x.ReviewNotes).HasMaxLength(500);
+            entity.HasIndex(x => x.SubmittedByUserId);
+            entity.HasIndex(x => x.Status);
+            entity.HasIndex(x => x.ExpenseDate);
+            entity.HasIndex(x => x.Category);
+        });
+
+        // ── ArtistSubscription ────────────────────────────────────────
+        builder.Entity<ArtistSubscription>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.UserId).HasMaxLength(450).IsRequired();
+            entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
+            entity.Property(x => x.MonthlyAmount).HasColumnType("decimal(10,2)");
+            entity.Property(x => x.LastBilledAmount).HasColumnType("decimal(10,2)");
+            entity.Property(x => x.Notes).HasMaxLength(1000);
+            entity.HasIndex(x => x.UserId);
+            entity.HasIndex(x => x.Status);
+            entity.HasIndex(x => x.NextBillingDate);
         });
     }
 }

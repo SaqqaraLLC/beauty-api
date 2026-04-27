@@ -1,4 +1,5 @@
 ﻿using System.ComponentModel.DataAnnotations;
+using Beauty.Api.Models.Services;
 
 namespace Beauty.Api.Models;
 
@@ -22,5 +23,6 @@ public class Service
     public long? CategoryId { get; set; }
     public ServiceCategory? Category { get; set; }
 
-    public ICollection<ServiceAddOn> AddOns { get; set; } = new List<ServiceAddOn>();
+    public ICollection<ServiceAddOn>         AddOns           { get; set; } = new List<ServiceAddOn>();
+    public ICollection<ServiceRequiredProduct> RequiredProducts { get; set; } = new List<ServiceRequiredProduct>();
 }
