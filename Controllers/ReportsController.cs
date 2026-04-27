@@ -9,7 +9,7 @@ namespace Beauty.Api.Controllers;
 
 [ApiController]
 [Route("api/reports")]
-[Authorize(Roles = "Admin")]
+[Authorize(Roles = "Admin,Staff")]
 public class ReportsController : ControllerBase
 {
     private readonly BeautyDbContext _db;

@@ -81,6 +81,17 @@ namespace Beauty.Api.Email
             return Send("admin_alert", to, subject, data);
         }
 
+        public Task SendTeamInviteAsync(string to, string fullName, string resetLink)
+        {
+            var data = new Dictionary<string, string>
+            {
+                ["FullName"]  = fullName,
+                ["ResetLink"] = resetLink,
+                ["Year"]      = System.DateTime.UtcNow.Year.ToString()
+            };
+            return Send("team_invite", to, "You've been added to the Saqqara team", data);
+        }
+
         private async Task Send(
             string template,
             string to,

@@ -18,23 +18,29 @@ namespace Beauty.Api.Controllers;
 public class AdminController : ControllerBase
 {
     private readonly UserManager<ApplicationUser> _userManager;
+    private readonly RoleManager<IdentityRole> _roleManager;
     private readonly UserApprovalService _approvalService;
     private readonly BeautyDbContext _db;
     private readonly BlobStorageService _blob;
     private readonly AuditService _audit;
+    private readonly EmailTemplateService _email;
 
     public AdminController(
         UserManager<ApplicationUser> userManager,
+        RoleManager<IdentityRole> roleManager,
         UserApprovalService approvalService,
         BeautyDbContext db,
         BlobStorageService blob,
-        AuditService audit)
+        AuditService audit,
+        EmailTemplateService email)
     {
         _userManager = userManager;
+        _roleManager = roleManager;
         _approvalService = approvalService;
         _db = db;
         _blob = blob;
         _audit = audit;
+        _email = email;
     }
 
     private string ActorId => User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "unknown";
@@ -244,6 +250,77 @@ public class AdminController : ControllerBase
                 timestamp    = l.Timestamp,
             })
         });
+    }
+
+    // ── Team Member Invite ───────────────────────────────────────────────
+    // Creates a Staff account directly — bypasses registration approval flow.
+    // Sends a password-reset email so the invitee sets their own password.
+
+    public record InviteTeamMemberRequest(string Email, string FirstName, string LastName, string Role = "Staff");
+
+    [HttpPost("invite-team-member")]
+    public async Task<IActionResult> InviteTeamMember([FromBody] InviteTeamMemberRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req.Email))
+            return BadRequest(new { error = "Email is required." });
+
+        var allowedRoles = new[] { "Staff", "Admin" };
+        if (!allowedRoles.Contains(req.Role))
+            return BadRequest(new { error = "Role must be Staff or Admin." });
+
+        var existing = await _userManager.FindByEmailAsync(req.Email);
+        if (existing != null)
+            return Conflict(new { error = "An account with this email already exists." });
+
+        var user = new ApplicationUser
+        {
+            UserName  = req.Email,
+            Email     = req.Email,
+            FirstName = req.FirstName,
+            LastName  = req.LastName,
+            Status    = "Approved",
+            EmailConfirmed = true,
+        };
+
+        var tempPassword = Guid.NewGuid().ToString("N")[..12] + "Aa1!";
+        var result = await _userManager.CreateAsync(user, tempPassword);
+        if (!result.Succeeded)
+            return BadRequest(new { errors = result.Errors.Select(e => e.Description) });
+
+        if (!await _roleManager.RoleExistsAsync(req.Role))
+            await _roleManager.CreateAsync(new IdentityRole(req.Role));
+
+        await _userManager.AddToRoleAsync(user, req.Role);
+
+        // Send password reset link so they set their own password
+        var token     = await _userManager.GeneratePasswordResetTokenAsync(user);
+        var resetLink = $"https://saqqarallc.com/auth/reset-password?token={Uri.EscapeDataString(token)}&email={Uri.EscapeDataString(req.Email)}";
+
+        _ = _email.SendTeamInviteAsync(req.Email, $"{req.FirstName} {req.LastName}".Trim(), resetLink)
+              .ContinueWith(_ => { });
+
+        await _audit.LogAsync(ActorId, "Admin.TeamMemberInvited",
+            targetEntity: $"User/{user.Id}",
+            details: $"Email={req.Email} Role={req.Role}",
+            actorEmail: ActorEmail,
+            resultCode: 201);
+
+        return StatusCode(201, new { userId = user.Id, email = user.Email, role = req.Role, message = "Invite sent." });
+    }
+
+    // ── List All Team Members (Staff + Admin) ─────────────────────────
+
+    [HttpGet("team-members")]
+    public async Task<IActionResult> GetTeamMembers()
+    {
+        var staff = await _userManager.GetUsersInRoleAsync("Staff");
+        var admins = await _userManager.GetUsersInRoleAsync("Admin");
+
+        var all = admins.Select(u => new { u.Id, u.Email, u.FirstName, u.LastName, u.Status, Role = "Admin" })
+            .Concat(staff.Select(u => new { u.Id, u.Email, u.FirstName, u.LastName, u.Status, Role = "Staff" }))
+            .OrderBy(u => u.Role).ThenBy(u => u.LastName);
+
+        return Ok(all);
     }
 
     public record RejectDocumentRequest(string Reason);
