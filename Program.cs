@@ -373,14 +373,12 @@ try
         }
         else
         {
-            // Reset password, unlock account, clear failed attempts
-            var token = await userManager.GeneratePasswordResetTokenAsync(admin);
-            await userManager.ResetPasswordAsync(admin, token, seed.AdminPassword);
+            // Ensure role is set but do NOT reset the password — preserves whatever was set manually
             await userManager.SetLockoutEndDateAsync(admin, null);
             await userManager.ResetAccessFailedCountAsync(admin);
             if (!await userManager.IsInRoleAsync(admin, "Admin"))
                 await userManager.AddToRoleAsync(admin, "Admin");
-            Console.WriteLine("[STARTUP] Admin password reset and unlocked.");
+            Console.WriteLine("[STARTUP] Admin account verified.");
         }
     }
 
