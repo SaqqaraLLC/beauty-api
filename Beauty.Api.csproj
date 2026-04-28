@@ -38,6 +38,8 @@
 
 		<PackageReference Include="QuestPDF" Version="2024.3.4" />
 
+		<PackageReference Include="Stripe.net" Version="51.1.0" />
+
 		<PackageReference Include="Swashbuckle.AspNetCore" Version="6.5.0" />
 
 		<PackageReference Include="Microsoft.Graph" Version="5.103.0" />

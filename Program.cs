@@ -251,9 +251,8 @@ builder.Services.AddScoped<EmailTemplateService>();
 builder.Services.AddScoped<ContractGeneratorService>();
 builder.Services.AddScoped<InvoiceGeneratorService>();
 
-// Worldpay
-builder.Services.AddHttpClient();
-builder.Services.AddScoped<IWorldpayService, WorldpayService>();
+// Stripe
+builder.Services.AddScoped<IStripeService, StripeService>();
 
 // Power Automate webhooks
 builder.Services.Configure<PowerAutomateSettings>(
