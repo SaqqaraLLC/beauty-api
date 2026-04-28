@@ -1,5 +1,6 @@
 using Beauty.Api.Authorization;
 using Beauty.Api.Data;
+using Microsoft.AspNetCore.DataProtection;
 using Beauty.Api.Domain.Approvals;
 using Beauty.Api.Email;
 using Beauty.Api.Models;
@@ -111,6 +112,11 @@ builder.Services.AddDbContext<BeautyDbContext>(options =>
         connectionString,
         new MySqlServerVersion(new Version(8, 0, 34))
     ));
+
+// Data Protection — persist keys to MySQL so sessions survive restarts/deployments
+builder.Services.AddDataProtection()
+    .SetApplicationName("SaqqaraApi")
+    .PersistKeysToDbContext<Beauty.Api.Data.BeautyDbContext>();
 
 // Identity
 

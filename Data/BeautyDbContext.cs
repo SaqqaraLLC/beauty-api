@@ -12,6 +12,7 @@ using Beauty.Api.Models.Services;
 using Beauty.Api.Models.Subscriptions;
 using Beauty.Api.Models.Gifts;
 using Beauty.Api.Services;
+using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
@@ -19,7 +20,8 @@ using Microsoft.EntityFrameworkCore;
 namespace Beauty.Api.Data;
 
 public class BeautyDbContext
-    : IdentityDbContext<ApplicationUser, IdentityRole, string>
+    : IdentityDbContext<ApplicationUser, IdentityRole, string>,
+      IDataProtectionKeyContext
 {
     private readonly ITenantContext _tenant;
 
@@ -98,6 +100,9 @@ public class BeautyDbContext
     public DbSet<CollabSession>    CollabSessions     => Set<CollabSession>();
     public DbSet<CollabParticipant> CollabParticipants => Set<CollabParticipant>();
     public DbSet<ArtistShort>      ArtistShorts       => Set<ArtistShort>();
+
+    // ── Data Protection ───────────────────────────────────────────
+    public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
 
     // ── Documents ─────────────────────────────────────────────────
     public DbSet<UserDocument> UserDocuments => Set<UserDocument>();
