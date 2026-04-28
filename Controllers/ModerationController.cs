@@ -28,96 +28,131 @@ public class ModerationController : ControllerBase
         _pa      = pa.Value;
     }
 
-    // ── GET /api/moderation/flags ──────────────────────────────────────
-    // ?status=Flagged|Reviewed|Dismissed  (omit for all)
+    // ── GET /api/moderation/flags?status=&type= ───────────────────────────
+    // type = "stream" | "short" | omit for both
 
     [HttpGet("flags")]
-    public async Task<IActionResult> GetFlags([FromQuery] string? status)
+    public async Task<IActionResult> GetFlags(
+        [FromQuery] string? status,
+        [FromQuery] string? type)
     {
-        var query = _db.StreamFlags
-            .AsNoTracking()
-            .Include(f => f.Stream)
-                .ThenInclude(s => s.ArtistProfile)
-            .AsQueryable();
-
+        StreamFlagStatus? parsed = null;
         if (!string.IsNullOrWhiteSpace(status) &&
-            Enum.TryParse<StreamFlagStatus>(status, true, out var parsed))
-            query = query.Where(f => f.Status == parsed);
+            Enum.TryParse<StreamFlagStatus>(status, true, out var s))
+            parsed = s;
 
-        var flags = await query
-            .OrderByDescending(f => f.FlaggedAt)
-            .ToListAsync();
+        var results = new List<object>();
 
-        return Ok(flags.Select(f => new
+        if (type is null || type.Equals("stream", StringComparison.OrdinalIgnoreCase))
         {
-            flagId        = f.Id,
-            streamId      = f.StreamId,
-            artistName    = f.Stream.ArtistProfile?.FullName ?? "Unknown Artist",
-            streamTitle   = f.Stream.Title,
-            reason        = f.Reason,
-            flagConfidence = f.FlagConfidence,
-            flaggedAt     = f.FlaggedAt,
-            status        = f.Status.ToString(),
-            reviewedBy    = f.ReviewedByName,
-            reviewedAt    = f.ReviewedAt,
-            action        = f.Action,
-            reviewNotes   = f.ReviewNotes
-        }));
+            var q = _db.StreamFlags
+                .AsNoTracking()
+                .Include(f => f.Stream).ThenInclude(s => s.ArtistProfile)
+                .AsQueryable();
+            if (parsed.HasValue) q = q.Where(f => f.Status == parsed.Value);
+
+            var flags = await q.OrderByDescending(f => f.FlaggedAt).ToListAsync();
+            results.AddRange(flags.Select(f => (object)new
+            {
+                flagId        = f.Id,
+                flagType      = "stream",
+                contentId     = f.StreamId,
+                artistName    = f.Stream.ArtistProfile?.FullName ?? "Unknown Artist",
+                contentTitle  = f.Stream.Title,
+                reason        = f.Reason,
+                flaggedAt     = f.FlaggedAt,
+                status        = f.Status.ToString(),
+                reviewedBy    = f.ReviewedByName,
+                reviewedAt    = f.ReviewedAt,
+                action        = f.Action,
+                reviewNotes   = f.ReviewNotes
+            }));
+        }
+
+        if (type is null || type.Equals("short", StringComparison.OrdinalIgnoreCase))
+        {
+            var q = _db.ShortFlags
+                .AsNoTracking()
+                .Include(f => f.Short)
+                .AsQueryable();
+            if (parsed.HasValue) q = q.Where(f => f.Status == parsed.Value);
+
+            var flags = await q.OrderByDescending(f => f.FlaggedAt).ToListAsync();
+            results.AddRange(flags.Select(f => (object)new
+            {
+                flagId        = f.Id,
+                flagType      = "short",
+                contentId     = f.ShortId,
+                artistName    = f.Short.ArtistName,
+                contentTitle  = f.Short.Title,
+                reason        = f.Reason,
+                flaggedAt     = f.FlaggedAt,
+                status        = f.Status.ToString(),
+                reviewedBy    = f.ReviewedByName,
+                reviewedAt    = f.ReviewedAt,
+                action        = f.Action,
+                reviewNotes   = f.ReviewNotes
+            }));
+        }
+
+        return Ok(results.OrderByDescending(r => ((dynamic)r).flaggedAt));
     }
 
-    // ── POST /api/moderation/{flagId}/review ───────────────────────────
-    // Body: { action: "approve" | "remove" | "ban", notes?: string }
+    // ── POST /api/moderation/stream/{flagId}/review ───────────────────────
 
-    [HttpPost("{flagId:long}/review")]
-    public async Task<IActionResult> Review(long flagId, [FromBody] FlagReviewReq req)
+    [HttpPost("stream/{flagId:long}/review")]
+    public async Task<IActionResult> ReviewStream(long flagId, [FromBody] FlagReviewReq req)
     {
         var flag = await _db.StreamFlags
             .Include(f => f.Stream)
             .FirstOrDefaultAsync(f => f.Id == flagId);
-
         if (flag is null) return NotFound();
 
-        var reviewerName = User.FindFirst(ClaimTypes.Name)?.Value
-                        ?? User.FindFirst(ClaimTypes.Email)?.Value
-                        ?? "Admin";
+        ApplyReview(flag, req);
 
-        flag.Status         = StreamFlagStatus.Reviewed;
-        flag.Action         = req.Action.ToLower();
-        flag.ReviewedByUserId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        flag.ReviewedByName = reviewerName;
-        flag.ReviewedAt     = DateTime.UtcNow;
-        flag.ReviewNotes    = req.Notes;
-
-        // Apply action to the stream
         if (req.Action.Equals("remove", StringComparison.OrdinalIgnoreCase) ||
             req.Action.Equals("ban",    StringComparison.OrdinalIgnoreCase))
-        {
             flag.Stream.IsActive = false;
-        }
 
-        // Ban: deactivate the artist profile too
         if (req.Action.Equals("ban", StringComparison.OrdinalIgnoreCase) &&
             flag.Stream.ArtistProfileId > 0)
         {
             var profile = await _db.ArtistProfiles.FindAsync(flag.Stream.ArtistProfileId);
-            if (profile is not null)
-                profile.IsActive = false;
+            if (profile is not null) profile.IsActive = false;
         }
 
         await _db.SaveChangesAsync();
         return Ok(new { flagId, action = flag.Action, reviewedAt = flag.ReviewedAt });
     }
 
-    public record FlagReviewReq(string Action, string? Notes);
+    // ── POST /api/moderation/short/{flagId}/review ────────────────────────
 
-    // ── POST /api/moderation/flag-stream/{streamId} ────────────────────
-    // Any authenticated user can flag a stream
+    [HttpPost("short/{flagId:long}/review")]
+    public async Task<IActionResult> ReviewShort(long flagId, [FromBody] FlagReviewReq req)
+    {
+        var flag = await _db.ShortFlags
+            .Include(f => f.Short)
+            .FirstOrDefaultAsync(f => f.Id == flagId);
+        if (flag is null) return NotFound();
+
+        ApplyReview(flag, req);
+
+        if (req.Action.Equals("remove", StringComparison.OrdinalIgnoreCase) ||
+            req.Action.Equals("ban",    StringComparison.OrdinalIgnoreCase))
+            flag.Short.IsActive = false;
+
+        await _db.SaveChangesAsync();
+        return Ok(new { flagId, action = flag.Action, reviewedAt = flag.ReviewedAt });
+    }
+
+    // ── POST /api/moderation/flag-stream/{streamId} ───────────────────────
 
     [HttpPost("flag-stream/{streamId:int}")]
     [Authorize]
     public async Task<IActionResult> FlagStream(int streamId, [FromBody] FlagReq req)
     {
-        if (!await _db.Set<Beauty.Api.Models.Enterprise.Stream>().AnyAsync(s => s.StreamId == streamId && s.IsActive))
+        if (!await _db.Set<Beauty.Api.Models.Enterprise.Stream>()
+                .AnyAsync(s => s.StreamId == streamId && s.IsActive))
             return NotFound();
 
         var flag = new StreamFlag
@@ -129,39 +164,142 @@ public class ModerationController : ControllerBase
             Status          = StreamFlagStatus.Flagged,
             FlaggedAt       = DateTime.UtcNow
         };
-
         _db.StreamFlags.Add(flag);
         await _db.SaveChangesAsync();
 
-        if (flag.FlagConfidence >= 0.8)
-        {
-            _ = _webhook.FireAsync(_pa.ModerationAlertUrl, new
-            {
-                event_type  = "moderation.high_confidence_flag",
-                flag_id     = flag.Id,
-                stream_id   = streamId,
-                reason      = flag.Reason,
-                confidence  = flag.FlagConfidence,
-                flagged_at  = flag.FlaggedAt
-            });
-        }
-
-        return Ok(new { flagId = flag.Id, message = "Stream flagged for review." });
+        FireAlertIfNeeded("stream", flag.Id, streamId, flag.Reason, flag.FlagConfidence);
+        return Ok(new { flagId = flag.Id, message = "Reported. Our team will review shortly." });
     }
 
-    public record FlagReq(string Reason, double? Confidence);
+    // ── POST /api/moderation/flag-short/{shortId} ────────────────────────
 
-    // ── GET /api/moderation/summary ────────────────────────────────────
+    [HttpPost("flag-short/{shortId:long}")]
+    [Authorize]
+    public async Task<IActionResult> FlagShort(long shortId, [FromBody] FlagReq req)
+    {
+        if (!await _db.ArtistShorts.AnyAsync(s => s.Id == shortId && s.IsActive))
+            return NotFound();
+
+        var flag = new ShortFlag
+        {
+            ShortId         = shortId,
+            Reason          = req.Reason,
+            FlaggedByUserId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value,
+            Status          = StreamFlagStatus.Flagged,
+            FlaggedAt       = DateTime.UtcNow
+        };
+        _db.ShortFlags.Add(flag);
+        await _db.SaveChangesAsync();
+
+        FireAlertIfNeeded("short", flag.Id, (int)shortId, flag.Reason, 1.0);
+        return Ok(new { flagId = flag.Id, message = "Reported. Our team will review shortly." });
+    }
+
+    // ── POST /api/moderation/block ────────────────────────────────────────
+
+    [HttpPost("block")]
+    [Authorize]
+    public async Task<IActionResult> BlockUser([FromBody] BlockReq req)
+    {
+        var blockerId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value!;
+        if (blockerId == req.UserId) return BadRequest(new { error = "Cannot block yourself." });
+
+        var exists = await _db.UserBlocks
+            .AnyAsync(b => b.BlockerUserId == blockerId && b.BlockedUserId == req.UserId);
+        if (exists) return Ok(new { message = "Already blocked." });
+
+        _db.UserBlocks.Add(new UserBlock
+        {
+            BlockerUserId      = blockerId,
+            BlockedUserId      = req.UserId,
+            BlockedDisplayName = req.DisplayName,
+            CreatedAt          = DateTime.UtcNow
+        });
+        await _db.SaveChangesAsync();
+        return Ok(new { message = "User blocked." });
+    }
+
+    // ── DELETE /api/moderation/block/{userId} ─────────────────────────────
+
+    [HttpDelete("block/{userId}")]
+    [Authorize]
+    public async Task<IActionResult> UnblockUser(string userId)
+    {
+        var blockerId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value!;
+        var block = await _db.UserBlocks
+            .FirstOrDefaultAsync(b => b.BlockerUserId == blockerId && b.BlockedUserId == userId);
+        if (block is null) return Ok(new { message = "Not blocked." });
+
+        _db.UserBlocks.Remove(block);
+        await _db.SaveChangesAsync();
+        return Ok(new { message = "User unblocked." });
+    }
+
+    // ── GET /api/moderation/blocked ───────────────────────────────────────
+
+    [HttpGet("blocked")]
+    [Authorize]
+    public async Task<IActionResult> GetBlocked()
+    {
+        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value!;
+        var blocks = await _db.UserBlocks
+            .AsNoTracking()
+            .Where(b => b.BlockerUserId == userId)
+            .Select(b => new { b.BlockedUserId, b.BlockedDisplayName, b.CreatedAt })
+            .ToListAsync();
+        return Ok(blocks);
+    }
+
+    // ── GET /api/moderation/summary ───────────────────────────────────────
 
     [HttpGet("summary")]
     public async Task<IActionResult> Summary()
     {
-        var counts = await _db.StreamFlags
+        var streamCounts = await _db.StreamFlags
             .AsNoTracking()
             .GroupBy(f => f.Status)
-            .Select(g => new { Status = g.Key.ToString(), Count = g.Count() })
+            .Select(g => new { Type = "stream", Status = g.Key.ToString(), Count = g.Count() })
             .ToListAsync();
 
-        return Ok(counts);
+        var shortCounts = await _db.ShortFlags
+            .AsNoTracking()
+            .GroupBy(f => f.Status)
+            .Select(g => new { Type = "short", Status = g.Key.ToString(), Count = g.Count() })
+            .ToListAsync();
+
+        return Ok(new { streams = streamCounts, shorts = shortCounts });
     }
+
+    // ── Helpers ───────────────────────────────────────────────────────────
+
+    private void ApplyReview(dynamic flag, FlagReviewReq req)
+    {
+        flag.Status           = StreamFlagStatus.Reviewed;
+        flag.Action           = req.Action.ToLower();
+        flag.ReviewedByUserId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        flag.ReviewedByName   = User.FindFirst(ClaimTypes.Name)?.Value
+                             ?? User.FindFirst(ClaimTypes.Email)?.Value
+                             ?? "Admin";
+        flag.ReviewedAt       = DateTime.UtcNow;
+        flag.ReviewNotes      = req.Notes;
+    }
+
+    private void FireAlertIfNeeded(string type, long flagId, int contentId, string reason, double confidence)
+    {
+        if (string.IsNullOrEmpty(_pa.ModerationAlertUrl)) return;
+        _ = _webhook.FireAsync(_pa.ModerationAlertUrl, new
+        {
+            event_type  = "moderation.flag",
+            flag_type   = type,
+            flag_id     = flagId,
+            content_id  = contentId,
+            reason,
+            confidence,
+            flagged_at  = DateTime.UtcNow
+        });
+    }
+
+    public record FlagReviewReq(string Action, string? Notes);
+    public record FlagReq(string Reason, double? Confidence);
+    public record BlockReq(string UserId, string? DisplayName);
 }

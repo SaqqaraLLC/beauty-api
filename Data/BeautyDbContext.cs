@@ -78,6 +78,8 @@ public class BeautyDbContext
 
     // ── Moderation ────────────────────────────────────────────────
     public DbSet<StreamFlag>              StreamFlags              => Set<StreamFlag>();
+    public DbSet<ShortFlag>               ShortFlags               => Set<ShortFlag>();
+    public DbSet<UserBlock>               UserBlocks               => Set<UserBlock>();
     public DbSet<ServiceRequiredProduct>  ServiceRequiredProducts  => Set<ServiceRequiredProduct>();
 
     // ── Artist Subscriptions ───────────────────────────────────────
