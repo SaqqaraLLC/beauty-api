@@ -221,6 +221,9 @@ builder.Services.AddRateLimiter(options =>
 
 
 
+// HTTP client factory — required by WebhookService
+builder.Services.AddHttpClient();
+
 // Tenant context — resolves current EnterpriseAccountId from claims
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ITenantContext, TenantContext>();
