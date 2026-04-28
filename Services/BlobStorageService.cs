@@ -6,18 +6,25 @@ namespace Beauty.Api.Services;
 
 public class BlobStorageService
 {
-    private readonly BlobServiceClient _client;
+    private readonly BlobServiceClient? _client;
     private readonly string _container;
     private readonly string _mediaContainer;
+    private readonly bool _configured;
 
     public BlobStorageService(IConfiguration config)
     {
-        var connStr = config["Storage:ConnectionString"]
-            ?? throw new InvalidOperationException("Storage:ConnectionString is missing.");
+        var connStr = config["Storage:ConnectionString"];
         _container      = config["Storage:Container"]      ?? "documents";
         _mediaContainer = config["Storage:MediaContainer"] ?? "media";
-        _client = new BlobServiceClient(connStr);
+        if (!string.IsNullOrWhiteSpace(connStr))
+        {
+            _client = new BlobServiceClient(connStr);
+            _configured = true;
+        }
     }
+
+    private BlobServiceClient Client =>
+        _client ?? throw new InvalidOperationException("Azure Blob Storage is not configured (Storage:ConnectionString missing).");
 
     /// <summary>Upload a file and return the blob name (not a public URL).</summary>
     public async Task<string> UploadAsync(Stream data, string fileName, string contentType)
@@ -26,7 +33,7 @@ public class BlobStorageService
         var ext = Path.GetExtension(fileName).ToLowerInvariant();
         var blobName = $"{Guid.NewGuid()}{ext}";
 
-        var container = _client.GetBlobContainerClient(_container);
+        var container = Client.GetBlobContainerClient(_container);
         await container.CreateIfNotExistsAsync(PublicAccessType.None);
 
         var blob = container.GetBlobClient(blobName);
@@ -38,7 +45,7 @@ public class BlobStorageService
     /// <summary>Generate a short-lived SAS URL (1 hour) so admins can view a document.</summary>
     public string GenerateSasUrl(string blobName, int expiryMinutes = 60)
     {
-        var container = _client.GetBlobContainerClient(_container);
+        var container = Client.GetBlobContainerClient(_container);
         var blob = container.GetBlobClient(blobName);
 
         var sasBuilder = new BlobSasBuilder
@@ -55,7 +62,7 @@ public class BlobStorageService
 
     public async Task DeleteAsync(string blobName)
     {
-        var container = _client.GetBlobContainerClient(_container);
+        var container = Client.GetBlobContainerClient(_container);
         var blob = container.GetBlobClient(blobName);
         await blob.DeleteIfExistsAsync();
     }
@@ -63,7 +70,7 @@ public class BlobStorageService
     /// <summary>Upload a media file (video/image) to the public media container and return its public URL.</summary>
     public async Task<string> UploadMediaAsync(Stream data, string blobName, string contentType)
     {
-        var container = _client.GetBlobContainerClient(_mediaContainer);
+        var container = Client.GetBlobContainerClient(_mediaContainer);
         await container.CreateIfNotExistsAsync(PublicAccessType.Blob);
 
         var blob = container.GetBlobClient(blobName);
@@ -78,7 +85,7 @@ public class BlobStorageService
     /// <summary>Generate a write-only SAS URL so the frontend can upload directly to blob storage.</summary>
     public async Task<string> GenerateUploadSasUrlAsync(string blobName, string contentType)
     {
-        var container = _client.GetBlobContainerClient(_mediaContainer);
+        var container = Client.GetBlobContainerClient(_mediaContainer);
         await container.CreateIfNotExistsAsync(PublicAccessType.Blob);
 
         var blob = container.GetBlobClient(blobName);
@@ -96,7 +103,7 @@ public class BlobStorageService
     /// <summary>Get the public URL for a blob in the media container.</summary>
     public string GetPublicUrl(string blobName)
     {
-        var container = _client.GetBlobContainerClient(_mediaContainer);
+        var container = Client.GetBlobContainerClient(_mediaContainer);
         return container.GetBlobClient(blobName).Uri.ToString();
     }
 }
