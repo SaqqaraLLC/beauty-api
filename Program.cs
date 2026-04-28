@@ -489,6 +489,166 @@ catch (Exception ex)
     Console.WriteLine($"[STARTUP] Gift catalog seeding failed: {ex.Message}");
 }
 
+// ── 6. Seed Pravada products + service-product mappings ──────────────────
+try
+{
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<Beauty.Api.Data.BeautyDbContext>();
+
+    // ── Products ──────────────────────────────────────────────────────────
+    var pravadaProducts = new[]
+    {
+        // Hair Care
+        new { Name = "Daily Ritual Hydrating Shampoo",        Category = "Hair Care",  WholesaleCents = 500 },
+        new { Name = "Daily Ritual Hydrating Conditioner",    Category = "Hair Care",  WholesaleCents = 500 },
+        new { Name = "Pro-Restore Biotin Shampoo",            Category = "Hair Care",  WholesaleCents = 550 },
+        new { Name = "Pro-Hydration Shampoo",                 Category = "Hair Care",  WholesaleCents = 500 },
+        new { Name = "Pro-Hydration Conditioner",             Category = "Hair Care",  WholesaleCents = 500 },
+        new { Name = "Weekly Ritual Hydrating Hair Mask",     Category = "Hair Care",  WholesaleCents = 700 },
+        new { Name = "Pre-Wash Hair & Scalp Oil",             Category = "Hair Care",  WholesaleCents = 800 },
+        new { Name = "Argan Smoothing Serum",                 Category = "Hair Care",  WholesaleCents = 900 },
+        new { Name = "Smooth & Seal Blow Dry Spray",          Category = "Hair Care",  WholesaleCents = 750 },
+        // Skin Care
+        new { Name = "Kale Protein Facial Cleanser",          Category = "Skin Care",  WholesaleCents = 600 },
+        new { Name = "Vitamin C Antioxidant Facial Cleanser", Category = "Skin Care",  WholesaleCents = 650 },
+        new { Name = "Rose Water Hydra-Mist Toner",           Category = "Skin Care",  WholesaleCents = 600 },
+        new { Name = "Niacinamide & HA Water Cream",          Category = "Skin Care",  WholesaleCents = 800 },
+        new { Name = "Vitamin C Serum",                       Category = "Skin Care",  WholesaleCents = 950 },
+        new { Name = "Multi-Molecular Hyaluronic Acid Serum", Category = "Skin Care",  WholesaleCents = 900 },
+        new { Name = "Advanced Firming Eye Cream",            Category = "Skin Care",  WholesaleCents = 1000 },
+        // Bath & Body / Nails
+        new { Name = "Shea Butter Sugar Scrub",               Category = "Bath & Body", WholesaleCents = 550 },
+        new { Name = "Argan & Aloe Body Lotion",              Category = "Bath & Body", WholesaleCents = 500 },
+        new { Name = "Cuticle Oil",                           Category = "Bath & Body", WholesaleCents = 350 },
+        new { Name = "Shea Butter Hand Cream",                Category = "Bath & Body", WholesaleCents = 450 },
+    };
+
+    foreach (var p in pravadaProducts)
+    {
+        if (!await db.Products.AnyAsync(x => x.Name == p.Name && x.VendorName == "Pravada"))
+        {
+            db.Products.Add(new Beauty.Api.Models.Catalog.Product
+            {
+                Name                = p.Name,
+                Brand               = "Pravada",
+                VendorName          = "Pravada",
+                Category            = p.Category,
+                WholesalePriceCents = p.WholesaleCents,
+                Status              = Beauty.Api.Models.Catalog.ProductStatus.Approved,
+                IsActive            = true,
+                SubmittedAt         = DateTime.UtcNow,
+                ApprovedAt          = DateTime.UtcNow,
+            });
+        }
+    }
+    await db.SaveChangesAsync();
+
+    // ── Service Categories ────────────────────────────────────────────────
+    var categoryKeys = new[] { ("hair", "Hair"), ("skin", "Skin"), ("nails", "Nails") };
+    foreach (var (key, display) in categoryKeys)
+    {
+        if (!await db.ServiceCategories.AnyAsync(x => x.Key == key))
+            db.ServiceCategories.Add(new Beauty.Api.Models.ServiceCategory { Key = key, DisplayName = display, IsActive = true });
+    }
+    await db.SaveChangesAsync();
+
+    // ── Services ──────────────────────────────────────────────────────────
+    var hairCatId  = (await db.ServiceCategories.FirstAsync(x => x.Key == "hair")).Id;
+    var skinCatId  = (await db.ServiceCategories.FirstAsync(x => x.Key == "skin")).Id;
+    var nailCatId  = (await db.ServiceCategories.FirstAsync(x => x.Key == "nails")).Id;
+
+    var services = new[]
+    {
+        new { Name = "Haircut / Shampoo", CategoryId = hairCatId },
+        new { Name = "Color Service",     CategoryId = hairCatId },
+        new { Name = "Blowout / Styling", CategoryId = hairCatId },
+        new { Name = "Basic Facial",      CategoryId = skinCatId },
+        new { Name = "Advanced Facial",   CategoryId = skinCatId },
+        new { Name = "Manicure",          CategoryId = nailCatId },
+        new { Name = "Pedicure",          CategoryId = nailCatId },
+    };
+    foreach (var s in services)
+    {
+        if (!await db.Services.AnyAsync(x => x.Name == s.Name))
+            db.Services.Add(new Beauty.Api.Models.Service { Name = s.Name, CategoryId = s.CategoryId, Price = 0, DurationMinutes = 60, Active = true });
+    }
+    await db.SaveChangesAsync();
+
+    // ── Service → Product Mappings ────────────────────────────────────────
+    async Task<long> Svc(string name) => (await db.Services.FirstAsync(x => x.Name == name)).Id;
+    async Task<int>  Prd(string name) => (await db.Products.FirstAsync(x => x.Name == name && x.VendorName == "Pravada")).ProductId;
+
+    var mappings = new[]
+    {
+        // Haircut / Shampoo
+        new { SvcName = "Haircut / Shampoo", PrdName = "Daily Ritual Hydrating Shampoo",        Usage = Beauty.Api.Models.Services.ProductUsageType.Required,  Sort = 1 },
+        new { SvcName = "Haircut / Shampoo", PrdName = "Daily Ritual Hydrating Conditioner",    Usage = Beauty.Api.Models.Services.ProductUsageType.Required,  Sort = 2 },
+        new { SvcName = "Haircut / Shampoo", PrdName = "Pre-Wash Hair & Scalp Oil",             Usage = Beauty.Api.Models.Services.ProductUsageType.Optional,  Sort = 3 },
+        new { SvcName = "Haircut / Shampoo", PrdName = "Weekly Ritual Hydrating Hair Mask",     Usage = Beauty.Api.Models.Services.ProductUsageType.Aftercare, Sort = 4 },
+
+        // Color Service
+        new { SvcName = "Color Service",     PrdName = "Pro-Restore Biotin Shampoo",            Usage = Beauty.Api.Models.Services.ProductUsageType.Required,  Sort = 1 },
+        new { SvcName = "Color Service",     PrdName = "Weekly Ritual Hydrating Hair Mask",     Usage = Beauty.Api.Models.Services.ProductUsageType.Required,  Sort = 2 },
+        new { SvcName = "Color Service",     PrdName = "Argan Smoothing Serum",                 Usage = Beauty.Api.Models.Services.ProductUsageType.Optional,  Sort = 3 },
+        new { SvcName = "Color Service",     PrdName = "Pre-Wash Hair & Scalp Oil",             Usage = Beauty.Api.Models.Services.ProductUsageType.Aftercare, Sort = 4 },
+
+        // Blowout / Styling
+        new { SvcName = "Blowout / Styling", PrdName = "Pro-Hydration Shampoo",                 Usage = Beauty.Api.Models.Services.ProductUsageType.Required,  Sort = 1 },
+        new { SvcName = "Blowout / Styling", PrdName = "Pro-Hydration Conditioner",             Usage = Beauty.Api.Models.Services.ProductUsageType.Required,  Sort = 2 },
+        new { SvcName = "Blowout / Styling", PrdName = "Smooth & Seal Blow Dry Spray",          Usage = Beauty.Api.Models.Services.ProductUsageType.Optional,  Sort = 3 },
+        new { SvcName = "Blowout / Styling", PrdName = "Argan Smoothing Serum",                 Usage = Beauty.Api.Models.Services.ProductUsageType.Aftercare, Sort = 4 },
+
+        // Basic Facial
+        new { SvcName = "Basic Facial",      PrdName = "Kale Protein Facial Cleanser",          Usage = Beauty.Api.Models.Services.ProductUsageType.Required,  Sort = 1 },
+        new { SvcName = "Basic Facial",      PrdName = "Rose Water Hydra-Mist Toner",           Usage = Beauty.Api.Models.Services.ProductUsageType.Required,  Sort = 2 },
+        new { SvcName = "Basic Facial",      PrdName = "Niacinamide & HA Water Cream",          Usage = Beauty.Api.Models.Services.ProductUsageType.Required,  Sort = 3 },
+        new { SvcName = "Basic Facial",      PrdName = "Vitamin C Serum",                       Usage = Beauty.Api.Models.Services.ProductUsageType.Optional,  Sort = 4 },
+        new { SvcName = "Basic Facial",      PrdName = "Multi-Molecular Hyaluronic Acid Serum", Usage = Beauty.Api.Models.Services.ProductUsageType.Aftercare, Sort = 5 },
+
+        // Advanced Facial
+        new { SvcName = "Advanced Facial",   PrdName = "Vitamin C Antioxidant Facial Cleanser", Usage = Beauty.Api.Models.Services.ProductUsageType.Required,  Sort = 1 },
+        new { SvcName = "Advanced Facial",   PrdName = "Multi-Molecular Hyaluronic Acid Serum", Usage = Beauty.Api.Models.Services.ProductUsageType.Required,  Sort = 2 },
+        new { SvcName = "Advanced Facial",   PrdName = "Advanced Firming Eye Cream",            Usage = Beauty.Api.Models.Services.ProductUsageType.Optional,  Sort = 3 },
+        new { SvcName = "Advanced Facial",   PrdName = "Niacinamide & HA Water Cream",          Usage = Beauty.Api.Models.Services.ProductUsageType.Aftercare, Sort = 4 },
+
+        // Manicure
+        new { SvcName = "Manicure",          PrdName = "Cuticle Oil",                           Usage = Beauty.Api.Models.Services.ProductUsageType.Required,  Sort = 1 },
+        new { SvcName = "Manicure",          PrdName = "Shea Butter Hand Cream",                Usage = Beauty.Api.Models.Services.ProductUsageType.Optional,  Sort = 2 },
+        new { SvcName = "Manicure",          PrdName = "Argan & Aloe Body Lotion",              Usage = Beauty.Api.Models.Services.ProductUsageType.Aftercare, Sort = 3 },
+
+        // Pedicure
+        new { SvcName = "Pedicure",          PrdName = "Shea Butter Sugar Scrub",               Usage = Beauty.Api.Models.Services.ProductUsageType.Required,  Sort = 1 },
+        new { SvcName = "Pedicure",          PrdName = "Argan & Aloe Body Lotion",              Usage = Beauty.Api.Models.Services.ProductUsageType.Required,  Sort = 2 },
+        new { SvcName = "Pedicure",          PrdName = "Cuticle Oil",                           Usage = Beauty.Api.Models.Services.ProductUsageType.Optional,  Sort = 3 },
+        new { SvcName = "Pedicure",          PrdName = "Shea Butter Hand Cream",                Usage = Beauty.Api.Models.Services.ProductUsageType.Aftercare, Sort = 4 },
+    };
+
+    foreach (var m in mappings)
+    {
+        var svcId = await Svc(m.SvcName);
+        var prdId = await Prd(m.PrdName);
+        if (!await db.Set<Beauty.Api.Models.Services.ServiceRequiredProduct>()
+                     .AnyAsync(x => x.ServiceId == svcId && x.ProductId == prdId))
+        {
+            db.Set<Beauty.Api.Models.Services.ServiceRequiredProduct>().Add(
+                new Beauty.Api.Models.Services.ServiceRequiredProduct
+                {
+                    ServiceId = svcId,
+                    ProductId = prdId,
+                    UsageType = m.Usage,
+                    SortOrder = m.Sort,
+                    IsActive  = true,
+                });
+        }
+    }
+    await db.SaveChangesAsync();
+    Console.WriteLine("[STARTUP] Pravada product catalog seeded.");
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"[STARTUP] Pravada seeding failed: {ex.Message}");
+}
+
 // =================================================
 // 5. REQUEST PIPELINE (LOCKS LIVE HERE)
 // =================================================

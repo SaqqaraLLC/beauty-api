@@ -837,6 +837,7 @@ public class BeautyDbContext
         {
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Notes).HasMaxLength(500);
+            entity.Property(x => x.UsageType).HasConversion<string>().HasMaxLength(20);
             entity.HasOne(x => x.Service)
                   .WithMany(s => s.RequiredProducts)
                   .HasForeignKey(x => x.ServiceId)
@@ -846,6 +847,7 @@ public class BeautyDbContext
                   .HasForeignKey(x => x.ProductId)
                   .OnDelete(DeleteBehavior.Restrict);
             entity.HasIndex(x => new { x.ServiceId, x.IsActive });
+            entity.HasIndex(x => new { x.ServiceId, x.UsageType });
             entity.HasIndex(x => x.ProductId);
         });
 

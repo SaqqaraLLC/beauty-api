@@ -3,10 +3,16 @@ using Beauty.Api.Models.Catalog;
 
 namespace Beauty.Api.Models.Services;
 
-/// <summary>
-/// A full-unit product the customer purchases and keeps as part of a service booking.
-/// Charged on top of the service fee. No partial quantities.
-/// </summary>
+public enum ProductUsageType
+{
+    /// <summary>Auto-attached to every booking; cost rolled into service price.</summary>
+    Required,
+    /// <summary>Provider can add as a paid upgrade during booking.</summary>
+    Optional,
+    /// <summary>Retail recommendation shown to the client after the service.</summary>
+    Aftercare,
+}
+
 public class ServiceRequiredProduct
 {
     public long Id { get; set; }
@@ -16,6 +22,8 @@ public class ServiceRequiredProduct
 
     public int ProductId { get; set; }
     public Product Product { get; set; } = null!;
+
+    public ProductUsageType UsageType { get; set; } = ProductUsageType.Required;
 
     /// <summary>Full units included in the kit (1, 2, 3 — never a fraction).</summary>
     public int Quantity { get; set; } = 1;
