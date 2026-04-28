@@ -500,6 +500,60 @@ public class AdminController : ControllerBase
         return Ok(new { refunded = true, slabsRemoved = slabsToRemove });
     }
 
+    // ── User Lookup & Password Reset ──────────────────────────────────
+
+    [HttpGet("user-lookup")]
+    public async Task<IActionResult> UserLookup([FromQuery] string email)
+    {
+        if (string.IsNullOrWhiteSpace(email)) return BadRequest();
+        var user = await _userManager.FindByEmailAsync(email.Trim());
+        if (user == null) return NotFound(new { found = false });
+
+        var roles = await _userManager.GetRolesAsync(user);
+        return Ok(new
+        {
+            found    = true,
+            id       = user.Id,
+            email    = user.Email,
+            status   = user.Status,
+            role     = roles.FirstOrDefault() ?? "None",
+            locked   = await _userManager.IsLockedOutAsync(user),
+            emailConfirmed = user.EmailConfirmed,
+        });
+    }
+
+    [HttpPost("send-reset/{userId}")]
+    public async Task<IActionResult> SendPasswordReset(string userId)
+    {
+        var user = await _userManager.FindByIdAsync(userId);
+        if (user == null || string.IsNullOrEmpty(user.Email)) return NotFound();
+
+        var token    = await _userManager.GeneratePasswordResetTokenAsync(user);
+        var resetUrl = $"https://saqqarallc.com/reset-password?email={Uri.EscapeDataString(user.Email)}&token={Uri.EscapeDataString(token)}";
+
+        await _email.SendResetAsync(user.Email, user.Email, resetUrl);
+
+        await _audit.LogAsync(ActorId, "Admin.PasswordResetSent",
+            targetEntity: $"User/{user.Id}", actorEmail: ActorEmail, resultCode: 200);
+
+        return Ok(new { sent = true });
+    }
+
+    [HttpPost("unlock/{userId}")]
+    public async Task<IActionResult> UnlockAccount(string userId)
+    {
+        var user = await _userManager.FindByIdAsync(userId);
+        if (user == null) return NotFound();
+
+        await _userManager.ResetAccessFailedCountAsync(user);
+        await _userManager.SetLockoutEndDateAsync(user, null);
+
+        await _audit.LogAsync(ActorId, "Admin.AccountUnlocked",
+            targetEntity: $"User/{user.Id}", actorEmail: ActorEmail, resultCode: 200);
+
+        return Ok(new { unlocked = true });
+    }
+
     public record RejectDocumentRequest(string Reason);
     public record RejectRequest(string? Reason);
 }
