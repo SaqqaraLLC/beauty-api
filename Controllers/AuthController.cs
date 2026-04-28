@@ -171,6 +171,21 @@ public sealed class AuthController : ControllerBase
         return Ok(new { success = true });
     }
 
+    // ✅ MFA STATUS
+    [Authorize]
+    [HttpGet("mfa/status")]
+    public async Task<IActionResult> MfaStatus()
+    {
+        var user = await _userManager.GetUserAsync(User);
+        if (user == null) return Unauthorized();
+
+        return Ok(new
+        {
+            enabled = user.TwoFactorEnabled,
+            hasKey  = !string.IsNullOrEmpty(await _userManager.GetAuthenticatorKeyAsync(user))
+        });
+    }
+
     // ✅ MFA SETUP
     [Authorize]
     [HttpPost("mfa/setup")]
@@ -192,6 +207,89 @@ public sealed class AuthController : ControllerBase
             sharedKey = key,
             qrCodeUri = GenerateQrCodeUri(user.Email!, key!)
         });
+    }
+
+    // ✅ MFA ENABLE — verify first code then turn on 2FA + issue recovery codes
+    [Authorize]
+    [HttpPost("mfa/enable")]
+    public async Task<IActionResult> EnableMfa([FromBody] MfaVerifyRequest req)
+    {
+        var user = await _userManager.GetUserAsync(User);
+        if (user == null) return Unauthorized();
+
+        var valid = await _userManager.VerifyTwoFactorTokenAsync(
+            user, TokenOptions.DefaultAuthenticatorProvider, req.Code);
+
+        if (!valid)
+            return BadRequest(new { error = "Invalid code. Check your authenticator app and try again." });
+
+        await _userManager.SetTwoFactorEnabledAsync(user, true);
+
+        var codes = await _userManager.GenerateNewTwoFactorRecoveryCodesAsync(user, 8);
+        await _audit.LogAsync(user.Id, "Auth.MfaEnabled",
+            targetEntity: $"User/{user.Id}", actorEmail: user.Email, resultCode: 200);
+
+        return Ok(new { success = true, recoveryCodes = codes });
+    }
+
+    // ✅ MFA DISABLE
+    [Authorize]
+    [HttpPost("mfa/disable")]
+    public async Task<IActionResult> DisableMfa([FromBody] MfaVerifyRequest req)
+    {
+        var user = await _userManager.GetUserAsync(User);
+        if (user == null) return Unauthorized();
+
+        // Require a valid TOTP code to disable (prevents someone disabling if session stolen)
+        var valid = await _userManager.VerifyTwoFactorTokenAsync(
+            user, TokenOptions.DefaultAuthenticatorProvider, req.Code);
+
+        if (!valid)
+            return BadRequest(new { error = "Invalid code. Enter your current authenticator code to disable 2FA." });
+
+        await _userManager.SetTwoFactorEnabledAsync(user, false);
+        await _userManager.ResetAuthenticatorKeyAsync(user);
+        await _audit.LogAsync(user.Id, "Auth.MfaDisabled",
+            targetEntity: $"User/{user.Id}", actorEmail: user.Email, resultCode: 200);
+
+        return Ok(new { success = true });
+    }
+
+    // ✅ MFA RECOVERY CODES — regenerate a fresh set
+    [Authorize]
+    [HttpPost("mfa/recovery-codes")]
+    public async Task<IActionResult> RegenerateRecoveryCodes([FromBody] MfaVerifyRequest req)
+    {
+        var user = await _userManager.GetUserAsync(User);
+        if (user == null) return Unauthorized();
+
+        if (!user.TwoFactorEnabled)
+            return BadRequest(new { error = "2FA is not enabled." });
+
+        var valid = await _userManager.VerifyTwoFactorTokenAsync(
+            user, TokenOptions.DefaultAuthenticatorProvider, req.Code);
+
+        if (!valid)
+            return BadRequest(new { error = "Invalid code." });
+
+        var codes = await _userManager.GenerateNewTwoFactorRecoveryCodesAsync(user, 8);
+        return Ok(new { recoveryCodes = codes });
+    }
+
+    // ✅ MFA RECOVERY LOGIN — use a backup code instead of TOTP
+    [HttpPost("mfa/recover")]
+    [AllowAnonymous]
+    public async Task<IActionResult> RecoverMfa([FromBody] RecoveryLoginRequest req)
+    {
+        var user = await _signInManager.GetTwoFactorAuthenticationUserAsync();
+        if (user == null) return Unauthorized();
+
+        var result = await _signInManager.TwoFactorRecoveryCodeSignInAsync(req.RecoveryCode);
+        if (!result.Succeeded) return Unauthorized(new { error = "Invalid or already-used recovery code." });
+
+        var extraClaims = await BuildExtraClaimsAsync(user);
+        await _signInManager.SignInWithClaimsAsync(user, isPersistent: true, extraClaims);
+        return Ok(new { success = true });
     }
 
     // ✅ JWT TOKEN (for Swagger / API clients)
