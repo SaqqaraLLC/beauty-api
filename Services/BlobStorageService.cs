@@ -8,12 +8,14 @@ public class BlobStorageService
 {
     private readonly BlobServiceClient _client;
     private readonly string _container;
+    private readonly string _mediaContainer;
 
     public BlobStorageService(IConfiguration config)
     {
         var connStr = config["Storage:ConnectionString"]
             ?? throw new InvalidOperationException("Storage:ConnectionString is missing.");
-        _container = config["Storage:Container"] ?? "documents";
+        _container      = config["Storage:Container"]      ?? "documents";
+        _mediaContainer = config["Storage:MediaContainer"] ?? "media";
         _client = new BlobServiceClient(connStr);
     }
 
@@ -56,5 +58,45 @@ public class BlobStorageService
         var container = _client.GetBlobContainerClient(_container);
         var blob = container.GetBlobClient(blobName);
         await blob.DeleteIfExistsAsync();
+    }
+
+    /// <summary>Upload a media file (video/image) to the public media container and return its public URL.</summary>
+    public async Task<string> UploadMediaAsync(Stream data, string blobName, string contentType)
+    {
+        var container = _client.GetBlobContainerClient(_mediaContainer);
+        await container.CreateIfNotExistsAsync(PublicAccessType.Blob);
+
+        var blob = container.GetBlobClient(blobName);
+        await blob.UploadAsync(data, new BlobUploadOptions
+        {
+            HttpHeaders = new BlobHttpHeaders { ContentType = contentType }
+        });
+
+        return blob.Uri.ToString();
+    }
+
+    /// <summary>Generate a write-only SAS URL so the frontend can upload directly to blob storage.</summary>
+    public async Task<string> GenerateUploadSasUrlAsync(string blobName, string contentType)
+    {
+        var container = _client.GetBlobContainerClient(_mediaContainer);
+        await container.CreateIfNotExistsAsync(PublicAccessType.Blob);
+
+        var blob = container.GetBlobClient(blobName);
+        var sasBuilder = new BlobSasBuilder
+        {
+            BlobContainerName = _mediaContainer,
+            BlobName          = blobName,
+            Resource          = "b",
+            ExpiresOn         = DateTimeOffset.UtcNow.AddMinutes(30),
+        };
+        sasBuilder.SetPermissions(BlobSasPermissions.Write | BlobSasPermissions.Create);
+        return blob.GenerateSasUri(sasBuilder).ToString();
+    }
+
+    /// <summary>Get the public URL for a blob in the media container.</summary>
+    public string GetPublicUrl(string blobName)
+    {
+        var container = _client.GetBlobContainerClient(_mediaContainer);
+        return container.GetBlobClient(blobName).Uri.ToString();
     }
 }

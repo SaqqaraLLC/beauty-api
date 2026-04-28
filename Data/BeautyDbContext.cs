@@ -95,6 +95,7 @@ public class BeautyDbContext
     public DbSet<BattleSignup>     BattleSignups      => Set<BattleSignup>();
     public DbSet<CollabSession>    CollabSessions     => Set<CollabSession>();
     public DbSet<CollabParticipant> CollabParticipants => Set<CollabParticipant>();
+    public DbSet<ArtistShort>      ArtistShorts       => Set<ArtistShort>();
 
     // ── Documents ─────────────────────────────────────────────────
     public DbSet<UserDocument> UserDocuments => Set<UserDocument>();
