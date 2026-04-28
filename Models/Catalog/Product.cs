@@ -39,9 +39,13 @@ public class Product
     /// <summary>Wholesale cost in cents (what Saqqara pays %PURE).</summary>
     public int WholesalePriceCents { get; set; }
 
-    /// <summary>Standard client billing price in cents — 80% markup over wholesale.</summary>
+    /// <summary>Service-use billing price in cents — 80% markup over wholesale.</summary>
     [NotMapped]
     public int BilledPriceCents => (int)(WholesalePriceCents * 1.8m);
+
+    /// <summary>Retail (take-home) price in cents — 3.5× wholesale to cover shrinkage and margin.</summary>
+    [NotMapped]
+    public int RetailPriceCents => (int)(WholesalePriceCents * 3.5m);
 
     /// <summary>Promo client billing price in cents — 60% markup over wholesale.</summary>
     [NotMapped]

@@ -525,12 +525,13 @@ try
 
     foreach (var p in pravadaProducts)
     {
-        if (!await db.Products.AnyAsync(x => x.Name == p.Name && x.VendorName == "Pravada"))
+        var existing = await db.Products.FirstOrDefaultAsync(x => x.Name == p.Name && x.VendorName == "Pravada");
+        if (existing == null)
         {
             db.Products.Add(new Beauty.Api.Models.Catalog.Product
             {
                 Name                = p.Name,
-                Brand               = "Pravada",
+                Brand               = "Saqqara",
                 VendorName          = "Pravada",
                 Category            = p.Category,
                 WholesalePriceCents = p.WholesaleCents,
@@ -539,6 +540,10 @@ try
                 SubmittedAt         = DateTime.UtcNow,
                 ApprovedAt          = DateTime.UtcNow,
             });
+        }
+        else if (existing.Brand != "Saqqara")
+        {
+            existing.Brand = "Saqqara";
         }
     }
     await db.SaveChangesAsync();
