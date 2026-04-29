@@ -475,16 +475,25 @@ try
     if (!await db.GiftCatalog.AnyAsync())
     {
         db.GiftCatalog.AddRange(
-            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Rose",   Emoji = "🌹", SlabCost =    1, SortOrder = 1 },
-            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Comb",   Emoji = "🪮", SlabCost =    5, SortOrder = 2 },
-            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Pin",    Emoji = "📌", SlabCost =   10, SortOrder = 3 },
-            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Brush",  Emoji = "🖌️", SlabCost =   25, SortOrder = 4 },
-            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Crown",  Emoji = "👑", SlabCost =   50, SortOrder = 5 },
-            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Fire",   Emoji = "🔥", SlabCost =  100, SortOrder = 6 },
-            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Ice",    Emoji = "🧊", SlabCost = 1000, SortOrder = 7 }
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Rose",         Emoji = "🌹", SlabCost =     1, SortOrder = 1 },
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Comb",         Emoji = "🪮", SlabCost =     5, SortOrder = 2 },
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Pin",          Emoji = "📌", SlabCost =    10, SortOrder = 3 },
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Brush",        Emoji = "🖌️", SlabCost =    25, SortOrder = 4 },
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Crown",        Emoji = "👑", SlabCost =    50, SortOrder = 5 },
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Fire",         Emoji = "🔥", SlabCost =   100, SortOrder = 6 },
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Ice",          Emoji = "🧊", SlabCost =  1000, SortOrder = 7 },
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Diamond Ring", Emoji = "💍", SlabCost = 10000, SortOrder = 8 }
         );
         await db.SaveChangesAsync();
         Console.WriteLine("[STARTUP] Gift catalog seeded.");
+    }
+    else if (!await db.GiftCatalog.AnyAsync(g => g.SlabCost == 10000))
+    {
+        db.GiftCatalog.Add(
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Diamond Ring", Emoji = "💍", SlabCost = 10000, SortOrder = 8 }
+        );
+        await db.SaveChangesAsync();
+        Console.WriteLine("[STARTUP] Diamond Ring gift added to catalog.");
     }
 }
 catch (Exception ex)
