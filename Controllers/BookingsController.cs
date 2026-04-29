@@ -1,3 +1,4 @@
+using Beauty.Api.Authorization;
 using Beauty.Api.Data;
 using Beauty.Api.Domain.Approvals;
 using Beauty.Api.Email;
@@ -50,7 +51,8 @@ public class BookingsController : ControllerBase
     // CREATE BOOKING
     // ============================
     [HttpPost("create")]
-    [AllowAnonymous]
+    [Authorize]
+    [RequiresVerification]
     public async Task<IActionResult> Create([FromBody] CreateReq req)
     {
         if (!ModelState.IsValid)

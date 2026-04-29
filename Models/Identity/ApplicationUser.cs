@@ -14,6 +14,14 @@ public class ApplicationUser : IdentityUser
     public Artist? Artist { get; set; }
     public Location? Location { get; set; }
     public string Status { get; set; } = "Pending";
+
+    // ── Customer identity verification ────────────────────────────
+    public VerificationStatus VerificationStatus { get; set; } = VerificationStatus.Unverified;
+    public string? StripeVerificationSessionId   { get; set; }
+    public bool    AddressDocumentUploaded        { get; set; } = false;
+    public string? AddressDocumentUrl             { get; set; }
+    public DateTime? VerifiedAt                  { get; set; }
+    public string?   VerificationRejectedReason  { get; set; }
 }
 
 

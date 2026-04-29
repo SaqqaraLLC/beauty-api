@@ -1,3 +1,4 @@
+using Beauty.Api.Authorization;
 using Beauty.Api.Data;
 using Beauty.Api.Models;
 using Beauty.Api.Models.Gifts;
@@ -49,6 +50,7 @@ public class GiftsController : ControllerBase
 
     [HttpPost("send")]
     [Authorize]
+    [RequiresVerification]
     public async Task<IActionResult> SendGift([FromBody] SendGiftRequest req)
     {
         var gift = await _db.GiftCatalog.FindAsync(req.GiftId);

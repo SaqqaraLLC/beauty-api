@@ -554,6 +554,61 @@ public class AdminController : ControllerBase
         return Ok(new { unlocked = true });
     }
 
+    // ── Customer verification review ──────────────────────────────
+
+    [HttpGet("verifications/pending")]
+    public async Task<IActionResult> GetPendingVerifications()
+    {
+        var pending = await _userManager.Users
+            .Where(u => u.VerificationStatus == VerificationStatus.AddressPending)
+            .Select(u => new
+            {
+                u.Id,
+                u.Email,
+                u.FirstName,
+                u.LastName,
+                u.VerificationStatus,
+                u.AddressDocumentUrl,
+                u.StripeVerificationSessionId,
+            })
+            .ToListAsync();
+
+        return Ok(pending);
+    }
+
+    [HttpPost("verifications/{userId}/approve")]
+    public async Task<IActionResult> ApproveVerification(string userId)
+    {
+        var user = await _userManager.FindByIdAsync(userId);
+        if (user is null) return NotFound();
+
+        user.VerificationStatus = VerificationStatus.Verified;
+        user.VerifiedAt         = DateTime.UtcNow;
+        await _userManager.UpdateAsync(user);
+
+        await _audit.LogAsync(ActorId, "Admin.VerificationApproved",
+            targetEntity: $"User/{userId}", actorEmail: ActorEmail, resultCode: 200);
+
+        return Ok(new { verified = true });
+    }
+
+    [HttpPost("verifications/{userId}/reject")]
+    public async Task<IActionResult> RejectVerification(string userId, [FromBody] RejectVerificationRequest req)
+    {
+        var user = await _userManager.FindByIdAsync(userId);
+        if (user is null) return NotFound();
+
+        user.VerificationStatus        = VerificationStatus.Rejected;
+        user.VerificationRejectedReason = req.Reason;
+        await _userManager.UpdateAsync(user);
+
+        await _audit.LogAsync(ActorId, "Admin.VerificationRejected",
+            targetEntity: $"User/{userId}", actorEmail: ActorEmail, resultCode: 200);
+
+        return Ok(new { rejected = true });
+    }
+
     public record RejectDocumentRequest(string Reason);
     public record RejectRequest(string? Reason);
+    public record RejectVerificationRequest(string Reason);
 }
