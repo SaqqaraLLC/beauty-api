@@ -495,6 +495,68 @@ try
         await db.SaveChangesAsync();
         Console.WriteLine("[STARTUP] Diamond Ring gift added to catalog.");
     }
+    else if (!await db.GiftCatalog.AnyAsync(g => g.Name == "Thunder Wolf"))
+    {
+        db.GiftCatalog.AddRange(
+            // Animals
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Thunder Wolf",        Emoji = "🐺",  SlabCost =    50, SortOrder =  10 },
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Inferno Lion",         Emoji = "🦁",  SlabCost =   100, SortOrder =  11 },
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Shadow Panther",       Emoji = "🐆",  SlabCost =    75, SortOrder =  12 },
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Steel Rhino Charge",   Emoji = "🦏",  SlabCost =    50, SortOrder =  13 },
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Sky Eagle Strike",     Emoji = "🦅",  SlabCost =    30, SortOrder =  14 },
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Venom Cobra",          Emoji = "🐍",  SlabCost =    25, SortOrder =  15 },
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "War Gorilla",          Emoji = "🦍",  SlabCost =    75, SortOrder =  16 },
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Ice Bear Slam",        Emoji = "🐻‍❄️", SlabCost =   100, SortOrder =  17 },
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Fire Phoenix Rebirth", Emoji = "🦜",  SlabCost =   150, SortOrder =  18 },
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Hydra Awakening",      Emoji = "🐉",  SlabCost =   200, SortOrder =  19 },
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Shark Frenzy",         Emoji = "🦈",  SlabCost =    50, SortOrder =  20 },
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Battle Ram Impact",    Emoji = "🐏",  SlabCost =    30, SortOrder =  21 },
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Dragon Spiral",        Emoji = "🐲",  SlabCost =   500, SortOrder =  22 },
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Tiger Dash Combo",     Emoji = "🐯",  SlabCost =    75, SortOrder =  23 },
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Elephant War Stomp",   Emoji = "🐘",  SlabCost =   100, SortOrder =  24 },
+            // Love
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Heart Pulse",          Emoji = "❤️",  SlabCost =     5, SortOrder =  30 },
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Rose Bloom Deluxe",    Emoji = "🌹",  SlabCost =    10, SortOrder =  31 },
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Cupid Strike",         Emoji = "💘",  SlabCost =    25, SortOrder =  32 },
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Love Rain",            Emoji = "💕",  SlabCost =    50, SortOrder =  33 },
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Golden Heart Lock",    Emoji = "💛",  SlabCost =   100, SortOrder =  34 },
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Kiss Explosion",       Emoji = "💋",  SlabCost =    15, SortOrder =  35 },
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Infinity Heart Loop",  Emoji = "♾️",  SlabCost =    75, SortOrder =  36 },
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Proposal Ring Drop",   Emoji = "💍",  SlabCost =   500, SortOrder =  37 },
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Love Fireworks",       Emoji = "🎆",  SlabCost =    50, SortOrder =  38 },
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Galaxy Love Spiral",   Emoji = "🌌",  SlabCost =   200, SortOrder =  39 },
+            // Royalty
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Crown Ascension",      Emoji = "👑",  SlabCost =   100, SortOrder =  40 },
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Royal Throne Reveal",  Emoji = "🪑",  SlabCost =   150, SortOrder =  41 },
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Diamond Rain",         Emoji = "💎",  SlabCost =   500, SortOrder =  42 },
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "King Entrance Walk",   Emoji = "🤴",  SlabCost =   200, SortOrder =  43 },
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Golden Scepter Power", Emoji = "🔱",  SlabCost =   250, SortOrder =  44 },
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Royal Carpet Roll",    Emoji = "🟥",  SlabCost =    75, SortOrder =  45 },
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Treasure Chest Burst", Emoji = "💰",  SlabCost =   300, SortOrder =  46 },
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Crown Explosion",      Emoji = "👑",  SlabCost =   500, SortOrder =  47 },
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Royal Guard Formation",Emoji = "⚔️",  SlabCost =   150, SortOrder =  48 },
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Palace Materialize",   Emoji = "🏰",  SlabCost =  1000, SortOrder =  49 },
+            // Elements
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Lightning Crash",      Emoji = "⚡",  SlabCost =    50, SortOrder =  50 },
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Fire Tornado",         Emoji = "🌪️", SlabCost =   100, SortOrder =  51 },
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Ice Freeze Wave",      Emoji = "❄️",  SlabCost =    75, SortOrder =  52 },
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Wind Cyclone",         Emoji = "🌀",  SlabCost =    25, SortOrder =  53 },
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Earthquake Break",     Emoji = "💥",  SlabCost =   100, SortOrder =  54 },
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Energy Orb Charge",    Emoji = "🔮",  SlabCost =   150, SortOrder =  55 },
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Black Hole Pull",      Emoji = "🌑",  SlabCost =   500, SortOrder =  56 },
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Plasma Beam Shot",     Emoji = "🔵",  SlabCost =   200, SortOrder =  57 },
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Light Explosion",      Emoji = "💥",  SlabCost =   150, SortOrder =  58 },
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Dark Aura Pulse",      Emoji = "🌑",  SlabCost =   300, SortOrder =  59 },
+            // Premium
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Cosmic Portal",        Emoji = "🌀",  SlabCost =  1000, SortOrder =  60 },
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Meteor Strike",        Emoji = "☄️",  SlabCost =  2000, SortOrder =  61 },
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Time Warp",            Emoji = "⏰",  SlabCost =   500, SortOrder =  62 },
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "Neon Hacker Glitch",   Emoji = "💻",  SlabCost =   750, SortOrder =  63 },
+            new Beauty.Api.Models.Gifts.GiftCatalogItem { Name = "God Mode Activation",  Emoji = "🌟",  SlabCost =  5000, SortOrder =  64 }
+        );
+        await db.SaveChangesAsync();
+        Console.WriteLine("[STARTUP] 50 gift animations added to catalog.");
+    }
 }
 catch (Exception ex)
 {
